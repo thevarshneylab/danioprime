@@ -26,6 +26,15 @@ Divalent cations and dNTPs fold into an equivalent monovalent concentration usin
 
 The dNTP term matters more than people expect: at 1.5 mM Mg²⁺ and 0.6 mM dNTPs the free Mg²⁺ is 0.9 mM, and the chelated fraction is not available to stabilise the duplex. Co-solvent corrections are linear: −0.75 °C per % DMSO, −0.65 °C per molar formamide.
 
+### Backend agreement, and why it does not mean identical output
+
+CI runs the full suite with `primer3-py` installed and asserts the two backends'
+Tm estimates agree within 3 °C for a typical 20-mer, and separately runs a real
+design through each. They nonetheless report different top pairs: with hundreds
+of candidates inside one penalty unit of each other, a few tenths of a degree
+is enough to reorder them. Agreement on the *physics* does not imply agreement
+on the *ranking*, and only the former is a correctness claim.
+
 ### A note on Tm monotonicity
 
 Tm is **not** strictly monotonic in primer length, and this is correct rather than a defect. Appending a weak A·T pair to a GC-rich duplex pulls the ΔH/ΔS ratio towards the A·T asymptote, so the computed Tm can fall by a few tenths of a degree. The test suite asserts the trend over several bases rather than step-by-step monotonicity.

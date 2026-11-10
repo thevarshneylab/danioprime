@@ -234,6 +234,8 @@ python -c "import json;from danioprime import DesignParams;DesignParams.from_dic
 
 Switch to `--thermo-backend primer3` when you need numbers that match a Primer3 run exactly.
 
+**The two backends are not interchangeable mid-project.** They agree on Tm to within a couple of degrees — CI asserts this on every push — but a few tenths of a degree is enough to reshuffle a ranking in which hundreds of candidates sit within one penalty unit of each other, so they routinely return *different* top pairs. Both pairs are valid and pass every filter; they are just not the same pair. Pick a backend at the start of a project and record it alongside the primers.
+
 ---
 
 ## Documentation
