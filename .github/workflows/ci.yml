@@ -67,6 +67,36 @@ jobs:
             --avoid examples/kcnh6b_locus.fa \
             --preset genotyping-gel --show 2
 
+  web-build:
+    name: browser build (wheel freshness + Pyodide)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: The wheel committed for the browser must match src/
+        run: python web/check_wheel.py
+
+      - name: Install the Pyodide version the page is pinned to
+        run: |
+          VERSION=$(node web/pyodide_version.mjs)
+          echo "index.html pins Pyodide $VERSION"
+          npm init -y > /dev/null
+          npm install --silent "pyodide@$VERSION"
+
+      - name: Every web mode runs under CPython-on-WebAssembly
+        run: node web/smoke.mjs
+
   primer3-backend:
     name: optional primer3 backend
     runs-on: ubuntu-latest

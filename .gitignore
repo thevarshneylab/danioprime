@@ -16,3 +16,10 @@ reference/
 *.fa.gz
 *.fai
 *.bt2
+
+# Local npm scratch from running web/smoke.mjs. The wheel that index.html
+# loads is deliberately committed at the repo root and is NOT ignored here --
+# web/check_wheel.py fails CI if it drifts from src/.
+node_modules/
+package.json
+package-lock.json

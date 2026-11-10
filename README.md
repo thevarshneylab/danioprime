@@ -8,6 +8,10 @@ Zebrafish-aware PCR primer design: **ohnolog discrimination**, **strain-variant 
 
 Primer3 solves the thermodynamics problem well, and `danioprime` does not try to replace it. What a generic designer cannot know is that the gene you are working on probably has a near-identical paralog, that your wild-type line is not isogenic, and that a genotyping amplicon has to span the lesion without touching it. Those are the three things this tool is for.
 
+**[Use it in your browser →](https://thevarshneylab.github.io/danioprime/)** — no install, and nothing you paste is uploaded.
+
+Or locally:
+
 ```bash
 pip install danioprime
 ```
@@ -158,6 +162,21 @@ R       kcnh6b_locus (0 mm)  YES      primes on kcnh6b_locus (0 mismatches)
 
 ---
 
+## Running it in a browser
+
+<https://thevarshneylab.github.io/danioprime/> runs this package — not a reimplementation of it — as CPython 3.14 compiled to WebAssembly, via [Pyodide](https://pyodide.org). All five modes are available.
+
+Two consequences worth knowing:
+
+- **Nothing is uploaded.** There is no server. The page fetches a Python runtime and the `danioprime` wheel, then does every calculation in your tab. Unpublished sequence is as safe there as in a local terminal.
+- **It works at all because the package has no dependencies.** A wheel is a zip, so `sys.path.insert(0, "danioprime.whl")` is the entire install step — no package manager, no compilation. That property was a design goal, not a lucky accident.
+
+The first visit downloads ~12 MB of runtime, then caches it. A design takes a few seconds; the page is unresponsive while Python works, which is honest about what is happening rather than hiding it behind a spinner that implies otherwise.
+
+What the browser build cannot do: genome-scale off-target screening, which needs `blastn` or `bowtie2`. In the browser the avoid-panel is whatever you paste. For a whole-genome check, use the CLI.
+
+CI verifies the browser build on every push — that the committed wheel matches `src/`, and that all five modes plus the error path still run under Pyodide. The wheel going stale is a real failure mode: it happened once during development, and the website would have silently served old code.
+
 ## Python API
 
 ```python
@@ -238,11 +257,30 @@ Switch to `--thermo-backend primer3` when you need numbers that match a Primer3 
 
 ---
 
+## Repository layout
+
+```
+src/danioprime/      the package
+  thermo/            nearest-neighbour model, structure, backends
+  design/            candidates, pairing, scoring, the shared pipeline
+  specificity/       priming rules, scanners, ohnolog panels, aligners
+  assays/            genotyping, qPCR, dCAPS, enzymes, tails
+  annotation/        GTF/GFF transcripts
+  variants/          VCF/BED masking
+  report/            text, TSV, JSON, BED writers
+  webapp.py          the single entry point the browser build calls
+index.html           the browser app (self-contained)
+danioprime-*.whl     the wheel index.html loads; CI fails if it drifts
+web/                 wheel-freshness check and the Pyodide smoke test
+examples/            synthetic mock-ohnolog dataset + demo.sh
+```
+
 ## Documentation
 
 - [`docs/algorithm.md`](docs/algorithm.md) — the thermodynamic model, the priming rules, scanning strategies and their sensitivity guarantees, the penalty model
 - [`docs/zebrafish-notes.md`](docs/zebrafish-notes.md) — ohnologs, strain variation, GRCz12tu coordinates, and the practical notes behind the presets
 - [`examples/DATA.md`](examples/DATA.md) — what the example dataset contains and how to regenerate it
+- [`web/`](web/) — the browser build's checks: `check_wheel.py` and `smoke.mjs`
 
 ## Citation
 
