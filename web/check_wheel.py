@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify the wheel committed for the browser build matches the current source.
 
-`index.html` loads a wheel committed beside it, so a stale wheel means the
+`docs/index.html` loads a wheel committed beside it, so a stale wheel means the
 website silently runs old code. This happened once during development, which is
 why it is now checked.
 
@@ -9,7 +9,9 @@ Contents are compared rather than bytes: zip entry timestamps differ between
 builds even when the sources are identical.
 
     python web/check_wheel.py          # check
-    python web/check_wheel.py --fix    # rebuild the committed wheel
+    python web/check_wheel.py --fix    # rebuild docs/<wheel>
+
+Run `python web/build_site.py` afterwards so the rest of docs/ stays in step.
 
 Exits non-zero when the committed wheel is missing, stale, or not pure Python.
 """
@@ -27,6 +29,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "danioprime"
+#: The wheel is committed beside the page that loads it.
+WHEEL_DIR = ROOT / "docs"
 
 
 def version() -> str:
@@ -79,12 +83,13 @@ def main() -> int:
 
     ver = version()
     name = wheel_name(ver)
-    committed = ROOT / name
+    committed = WHEEL_DIR / name
 
     if args.fix:
         with tempfile.TemporaryDirectory() as tmp:
             fresh = build(Path(tmp))
-            for old in ROOT.glob("danioprime-*-py3-none-any.whl"):
+            WHEEL_DIR.mkdir(exist_ok=True)
+            for old in WHEEL_DIR.glob("danioprime-*-py3-none-any.whl"):
                 old.unlink()
             shutil.copy2(fresh, committed)
         print(f"rebuilt {name}")
@@ -92,11 +97,11 @@ def main() -> int:
 
     problems: list[str] = []
     if not committed.exists():
-        print(f"FAIL {name} is not committed at the repo root")
+        print(f"FAIL {name} is not committed in {WHEEL_DIR.name}/")
         print("     fix: python web/check_wheel.py --fix")
         return 1
 
-    stray = [p.name for p in ROOT.glob("danioprime-*.whl") if p.name != name]
+    stray = [p.name for p in WHEEL_DIR.glob("danioprime-*.whl") if p.name != name]
     if stray:
         problems.append(f"wheels for other versions are still committed: {stray}")
 

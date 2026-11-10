@@ -14,7 +14,7 @@
  * Options via environment:
  *   PYODIDE_INDEX  path or URL to the Pyodide distribution
  *                  (default: ./node_modules/pyodide/)
- *   DANIOPRIME_WHEEL  wheel to load (default: the one beside index.html)
+ *   DANIOPRIME_WHEEL  wheel to load (default: the one in docs/)
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -28,9 +28,10 @@ const EXAMPLES = join(ROOT, "examples");
 
 function findWheel() {
   if (process.env.DANIOPRIME_WHEEL) return process.env.DANIOPRIME_WHEEL;
-  const hit = readdirSync(ROOT).find((f) => /^danioprime-.*-py3-none-any\.whl$/.test(f));
-  if (!hit) throw new Error("no danioprime wheel at the repository root");
-  return join(ROOT, hit);
+  const docs = join(ROOT, "docs");
+  const hit = readdirSync(docs).find((f) => /^danioprime-.*-py3-none-any\.whl$/.test(f));
+  if (!hit) throw new Error("no danioprime wheel in docs/; run python web/build_site.py");
+  return join(docs, hit);
 }
 
 const read = (name) => readFileSync(join(EXAMPLES, name), "utf8");

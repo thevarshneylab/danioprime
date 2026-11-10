@@ -9,6 +9,7 @@ diffed); here we check everything that can be checked from the repo alone.
 from __future__ import annotations
 
 import re
+import sys
 import zipfile
 from pathlib import Path
 
@@ -18,8 +19,10 @@ import danioprime
 from danioprime.webapp import MODES
 
 ROOT = Path(__file__).resolve().parents[1]
-INDEX = ROOT / "index.html"
-WHEEL = ROOT / f"danioprime-{danioprime.__version__}-py3-none-any.whl"
+#: Source of the page; docs/ is the build output GitHub Pages publishes.
+INDEX = ROOT / "web" / "index.html"
+DOCS = ROOT / "docs"
+WHEEL = DOCS / f"danioprime-{danioprime.__version__}-py3-none-any.whl"
 
 
 @pytest.fixture(scope="module")
@@ -32,8 +35,8 @@ def html() -> str:
 class TestWheelAsset:
     def test_the_wheel_for_this_version_is_committed(self):
         assert WHEEL.exists(), (
-            f"{WHEEL.name} is missing. Rebuild it with "
-            f"`pip wheel . --no-deps -w . ` after bumping the version."
+            f"docs/{WHEEL.name} is missing. Rebuild it with "
+            f"`python web/check_wheel.py --fix && python web/build_site.py`."
         )
 
     def test_index_points_at_that_exact_wheel(self, html):
@@ -113,6 +116,13 @@ class TestIndexHtml:
         for name in names:
             assert (ROOT / "examples" / name).exists(), f"examples/{name} is referenced but missing"
 
+    def test_every_referenced_example_is_bundled_into_the_page(self, html):
+        """The demo must work without extra network requests."""
+        from web_build import BUNDLED  # noqa: PLC0415
+
+        names = set(re.findall(r'fetchExample\("([^"]+)"\)', html))
+        assert names <= set(BUNDLED), f"not bundled by build_site.py: {sorted(names - set(BUNDLED))}"
+
     def test_demo_protospacer_is_present_in_the_demo_locus(self, html):
         """The 'load example' button must produce an input that actually works."""
         match = re.search(r'\$\("g-proto"\)\.value = "([ACGT]+)"', html)
@@ -143,7 +153,49 @@ class TestIndexHtml:
 
     def test_no_external_script_beyond_pyodide(self, html):
         srcs = re.findall(r'<script[^>]*\ssrc="([^"]+)"', html)
-        assert srcs == [], f"unexpected external scripts: {srcs}"
+        remote = [s for s in srcs if not s.startswith("./")]
+        assert remote == [], f"unexpected external scripts: {remote}"
         imports = re.findall(r'import\("?([^")]+)', html)
         for target in imports:
             assert "PYODIDE" in target or target.startswith("node:"), target
+
+
+class TestPublishedSite:
+    """`docs/` is a build output; CI must catch it drifting from its sources."""
+
+    def test_docs_is_up_to_date(self):
+        import subprocess  # noqa: PLC0415
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "web" / "build_site.py"), "--check"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_published_index_matches_the_source(self):
+        assert (DOCS / "index.html").read_bytes() == INDEX.read_bytes()
+
+    def test_nojekyll_is_present(self):
+        """Without it Pages runs Jekyll, which rewrites the page."""
+        assert (DOCS / ".nojekyll").exists()
+
+    def test_page_contains_no_liquid_tags(self, html):
+        """Belt and braces: `{{` or `{%` would be mangled if Jekyll ever ran."""
+        assert "{{" not in html
+        assert "{%" not in html
+
+    def test_bundled_examples_match_the_dataset(self):
+        import json  # noqa: PLC0415
+
+        js = (DOCS / "examples.js").read_text()
+        match = re.search(r"globalThis\.DP_EXAMPLES = (\{.*\});", js, re.S)
+        assert match, "examples.js does not assign DP_EXAMPLES"
+        data = json.loads(match.group(1))
+        assert data, "no examples bundled"
+        for name, text in data.items():
+            assert text == (ROOT / "examples" / name).read_text(), f"{name} has drifted"
+
+    def test_only_one_wheel_is_published(self):
+        wheels = sorted(p.name for p in DOCS.glob("danioprime-*.whl"))
+        assert wheels == [WHEEL.name], wheels

@@ -175,6 +175,8 @@ The first visit downloads ~12 MB of runtime, then caches it. A design takes a fe
 
 What the browser build cannot do: genome-scale off-target screening, which needs `blastn` or `bowtie2`. In the browser the avoid-panel is whatever you paste. For a whole-genome check, use the CLI.
 
+The site is published from `main` / `/docs`, which is a **build output**: edit `web/index.html`, then run `python web/build_site.py`. Publishing from `docs/` rather than the repository root keeps the served surface to four deliberate files instead of exposing the whole tree, and `docs/.nojekyll` makes Pages serve them verbatim rather than running the HTML through Jekyll.
+
 CI verifies the browser build on every push — that the committed wheel matches `src/`, and that all five modes plus the error path still run under Pyodide. The wheel going stale is a real failure mode: it happened once during development, and the website would have silently served old code.
 
 ## Python API
@@ -269,9 +271,11 @@ src/danioprime/      the package
   variants/          VCF/BED masking
   report/            text, TSV, JSON, BED writers
   webapp.py          the single entry point the browser build calls
-index.html           the browser app (self-contained)
-danioprime-*.whl     the wheel index.html loads; CI fails if it drifts
-web/                 wheel-freshness check and the Pyodide smoke test
+web/index.html       source of the browser app (self-contained)
+web/build_site.py    assembles docs/ ; --check fails CI when it drifts
+web/check_wheel.py   fails CI when the published wheel drifts from src/
+web/smoke.mjs        runs every web mode under real Pyodide
+docs/                published by GitHub Pages: the built site + the wheel
 examples/            synthetic mock-ohnolog dataset + demo.sh
 ```
 

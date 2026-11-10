@@ -87,6 +87,9 @@ jobs:
       - name: The wheel committed for the browser must match src/
         run: python web/check_wheel.py
 
+      - name: The published site in docs/ must match its sources
+        run: python web/build_site.py --check
+
       - name: Install the Pyodide version the page is pinned to
         run: |
           VERSION=$(node web/pyodide_version.mjs)

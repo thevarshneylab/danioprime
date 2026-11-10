@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>danioprime — zebrafish-aware primer design</title>
+<meta name="description" content="Zebrafish primer design in the browser: ohnolog discrimination, strain-variant masking, genotyping, qPCR and dCAPS. Nothing is uploaded.">
+<style>
+:root {
+  --bg: #fbfaf8; --panel: #ffffff; --ink: #16181d; --ink-soft: #5b6470;
+  --line: #e3e0da; --line-soft: #efece7;
+  --accent: #1c6b58; --accent-soft: #e8f2ee;
+  --warn: #8a5a12; --warn-soft: #fdf3e0;
+  --bad: #a3242f; --bad-soft: #fbeced;
+  --good: #1c6b58;
+  --mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a; --panel: #1b1e24; --ink: #e8e6e1; --ink-soft: #9aa3ae;
+    --line: #2d323a; --line-soft: #242830;
+    --accent: #5bbfa3; --accent-soft: #16302a;
+    --warn: #e0ae5e; --warn-soft: #302612;
+    --bad: #e8808a; --bad-soft: #321a1d; --good: #5bbfa3;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 var(--sans);
+}
+a { color: var(--accent); }
+header {
+  border-bottom: 1px solid var(--line); background: var(--panel);
+  padding: 14px 20px; display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
+}
+header h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+header h1 span { color: var(--accent); }
+header .tag { color: var(--ink-soft); font-size: 13px; flex: 1; min-width: 240px; }
+header .meta { font-size: 12px; color: var(--ink-soft); font-family: var(--mono); }
+#boot {
+  padding: 10px 20px; font-size: 13px; border-bottom: 1px solid var(--line);
+  background: var(--accent-soft); color: var(--ink); display: flex; gap: 10px; align-items: center;
+}
+#boot.hidden { display: none; }
+#boot .spin {
+  width: 12px; height: 12px; border: 2px solid var(--accent); border-right-color: transparent;
+  border-radius: 50%; animation: spin .8s linear infinite; flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#boot.err { background: var(--bad-soft); }
+#boot.err .spin { display: none; }
+main { display: grid; grid-template-columns: minmax(340px, 400px) 1fr; gap: 0; align-items: start; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+#controls { border-right: 1px solid var(--line); padding: 0 0 40px; background: var(--panel); min-height: 60vh; }
+@media (max-width: 900px) { #controls { border-right: none; border-bottom: 1px solid var(--line); } }
+#results { padding: 18px 20px 60px; min-width: 0; }
+nav.modes { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; }
+nav.modes button {
+  flex: 1; border: 0; border-bottom: 2px solid transparent; background: none;
+  padding: 11px 6px; font: 600 13px var(--sans); color: var(--ink-soft);
+  cursor: pointer; white-space: nowrap;
+}
+nav.modes button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+nav.modes button:hover:not([aria-selected="true"]) { color: var(--ink); }
+.pane { padding: 16px 18px; }
+.pane[hidden] { display: none; }
+.mode-note { font-size: 12.5px; color: var(--ink-soft); margin: 0 0 14px; }
+label { display: block; font-size: 12px; font-weight: 600; margin: 14px 0 4px; letter-spacing: .01em; }
+label:first-of-type { margin-top: 0; }
+label .hint { font-weight: 400; color: var(--ink-soft); text-transform: none; letter-spacing: 0; }
+input[type=text], input[type=number], textarea, select {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px;
+  background: var(--bg); color: var(--ink); font: 13px var(--sans);
+}
+textarea { font-family: var(--mono); font-size: 12px; resize: vertical; line-height: 1.45; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; min-width: 0; }
+.check { display: flex; gap: 7px; align-items: flex-start; font-size: 12.5px; font-weight: 400; margin: 9px 0 0; }
+.check input { width: auto; margin: 2px 0 0; flex: none; }
+.filerow { display: flex; gap: 8px; align-items: center; margin-top: 5px; font-size: 12px; }
+.filerow input[type=file] { font-size: 11px; color: var(--ink-soft); }
+button.go {
+  width: 100%; margin-top: 18px; padding: 10px; border: 0; border-radius: 6px;
+  background: var(--accent); color: #fff; font: 600 14px var(--sans); cursor: pointer;
+}
+button.go:disabled { opacity: .45; cursor: not-allowed; }
+button.go:hover:not(:disabled) { filter: brightness(1.08); }
+button.link {
+  border: 0; background: none; color: var(--accent); font: 12px var(--sans);
+  cursor: pointer; padding: 0; text-decoration: underline;
+}
+details.adv { margin-top: 16px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+details.adv summary { font-size: 12px; font-weight: 600; cursor: pointer; color: var(--ink-soft); }
+details.adv[open] summary { margin-bottom: 8px; color: var(--ink); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.grid2 label { margin: 6px 0 2px; }
+.empty { color: var(--ink-soft); font-size: 14px; max-width: 58ch; }
+.empty h2 { font-size: 15px; color: var(--ink); margin: 0 0 8px; }
+.empty ul { padding-left: 18px; }
+.empty li { margin: 5px 0; }
+.msg { padding: 11px 13px; border-radius: 6px; font-size: 13px; margin-bottom: 14px; white-space: pre-wrap; }
+.msg.bad { background: var(--bad-soft); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); }
+.msg.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+h2.sec { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); margin: 22px 0 9px; font-weight: 700; }
+h2.sec:first-child { margin-top: 0; }
+.cards { display: flex; flex-direction: column; gap: 11px; }
+.card { border: 1px solid var(--line); border-radius: 7px; background: var(--panel); overflow: hidden; }
+.card > .top { display: flex; gap: 10px; align-items: baseline; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; }
+.card .nm { font: 600 13px var(--mono); }
+.card .sz { font-size: 12.5px; color: var(--ink-soft); }
+.card .flag { font-size: 11px; padding: 1px 7px; border-radius: 20px; font-weight: 600; }
+.flag.ok { background: var(--accent-soft); color: var(--good); }
+.flag.no { background: var(--bad-soft); color: var(--bad); }
+.flag.neutral { background: var(--line-soft); color: var(--ink-soft); }
+.card .body { padding: 4px 12px 11px; }
+.oligo { display: grid; grid-template-columns: 18px 1fr auto; gap: 9px; align-items: baseline; padding: 6px 0; border-bottom: 1px dotted var(--line-soft); }
+.oligo:last-of-type { border-bottom: 0; }
+.oligo .dir { font: 700 11px var(--mono); color: var(--accent); }
+.oligo .seq { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+.oligo .num { font-size: 11.5px; color: var(--ink-soft); font-family: var(--mono); white-space: nowrap; text-align: right; }
+.card .notes { margin: 8px 0 0; padding-left: 16px; font-size: 12px; color: var(--ink-soft); }
+.card .notes li { margin: 2px 0; }
+.terms { margin-top: 8px; font-size: 11.5px; }
+.terms summary { cursor: pointer; color: var(--ink-soft); }
+.terms table { margin-top: 5px; font-family: var(--mono); font-size: 11.5px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+table.data th, table.data td { text-align: left; padding: 5px 9px 5px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+table.data th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
+table.data td.mono, table.data td:nth-child(n+2):not(.txt) { font-family: var(--mono); }
+.wrap { overflow-x: auto; }
+pre.report {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+  padding: 12px; overflow-x: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+  white-space: pre; margin: 0;
+}
+.dl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.dl button {
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 5px; padding: 6px 11px; font: 12px var(--sans); cursor: pointer;
+}
+.dl button:hover { border-color: var(--accent); color: var(--accent); }
+footer { border-top: 1px solid var(--line); padding: 16px 20px 40px; color: var(--ink-soft); font-size: 12.5px; }
+footer p { margin: 5px 0; max-width: 80ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>danio<span>prime</span></h1>
+  <div class="tag">Zebrafish-aware primer design — ohnolog discrimination, strain-variant masking, assay geometry.</div>
+  <div class="meta" id="ver">—</div>
+  <a href="https://github.com/thevarshneylab/danioprime" style="font-size:12.5px">source</a>
+</header>
+
+<div id="boot"><span class="spin"></span><span id="bootmsg">Starting Python…</span></div>
+
+<main>
+  <div id="controls">
+    <nav class="modes" role="tablist" id="tabs"></nav>
+
+    <section class="pane" id="pane-genotype" role="tabpanel">
+      <p class="mode-note">Primers that bracket an edited site: the amplicon spans the lesion and neither primer touches it.</p>
+      <label for="g-template">Locus sequence <span class="hint">— FASTA or raw bases</span></label>
+      <textarea id="g-template" rows="5" placeholder=">kcnh6a_locus&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="g-file" accept=".fa,.fasta,.fna,.txt,.seq"><button class="link" data-demo="genotype">load example</button></div>
+
+      <label for="g-avoid">Avoid-panel <span class="hint">— the ohnolog, a family member, a transgene</span></label>
+      <textarea id="g-avoid" rows="3" placeholder=">kcnh6b_locus&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="g-avoidfile" accept=".fa,.fasta,.fna,.txt,.seq"></div>
+
+      <label for="g-proto">Protospacer <span class="hint">— without the PAM, either strand</span></label>
+      <input type="text" id="g-proto" placeholder="AAGCCCTGTTATGTGCAACG" spellcheck="false">
+      <div class="row" style="margin-top:8px">
+        <div><label for="g-nuclease">Nuclease</label><select id="g-nuclease"></select></div>
+        <div><label for="g-cut">or cut position <span class="hint">1-based</span></label><input type="number" id="g-cut" min="1" placeholder="1768"></div>
+      </div>
+      <div class="check"><input type="checkbox" id="g-nopam"><label for="g-nopam" style="margin:0;font-weight:400">Locate the protospacer without checking the PAM</label></div>
+
+      <div class="row" style="margin-top:12px">
+        <div><label for="g-preset">Preset</label><select id="g-preset" data-preset></select></div>
+        <div><label for="g-tails">5′ tails</label><select id="g-tails" data-tails></select></div>
+      </div>
+
+      <label for="g-protected">Protected window <span class="hint">— bases each side of the cut no primer may touch; set above your largest expected indel</span></label>
+      <input type="number" id="g-protected" value="40" min="0">
+      <div class="row" style="margin-top:8px">
+        <div><label for="g-minflank">Min flank</label><input type="number" id="g-minflank" value="40" min="0"></div>
+        <div><label for="g-maxflank">Max flank</label><input type="number" id="g-maxflank" value="400" min="1"></div>
+      </div>
+      <button class="go" data-run="genotype">Design genotyping primers</button>
+    </section>
+
+    <section class="pane" id="pane-qpcr" role="tabpanel" hidden>
+      <p class="mode-note">RT-qPCR across an exon junction, so the assay cannot read genomic DNA — and, with an avoid-panel, cannot measure the ohnolog as well.</p>
+      <label for="q-template">Spliced transcript <span class="hint">— cDNA, FASTA or raw</span></label>
+      <textarea id="q-template" rows="5" placeholder=">kcnh6a-201&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="q-file" accept=".fa,.fasta,.txt"><button class="link" data-demo="qpcr">load example</button></div>
+
+      <label for="q-avoid">Avoid-panel <span class="hint">— the ohnolog <em>transcript</em></span></label>
+      <textarea id="q-avoid" rows="3" placeholder=">kcnh6b-201&#10;ACGT…"></textarea>
+
+      <label for="q-junctions">Exon-junction offsets <span class="hint">— positions in the transcript, comma separated</span></label>
+      <input type="text" id="q-junctions" placeholder="210, 540" spellcheck="false">
+
+      <details class="adv"><summary>…or paste a GTF instead</summary>
+        <label for="q-gtf">GTF / GFF3 exon lines</label>
+        <textarea id="q-gtf" rows="4" placeholder="chr5&#9;.&#9;exon&#9;1001&#9;1200&#9;.&#9;+&#9;.&#9;transcript_id &quot;x&quot;;"></textarea>
+        <label for="q-txid">Transcript or gene to use</label>
+        <input type="text" id="q-txid" placeholder="kcnh6a" spellcheck="false">
+      </details>
+
+      <div class="check"><input type="checkbox" id="q-span" checked><label for="q-span" style="margin:0;font-weight:400">Require a junction-spanning primer <span class="hint">(the strongest gDNA protection)</span></label></div>
+      <div class="row" style="margin-top:12px">
+        <div><label for="q-preset">Preset</label><select id="q-preset" data-preset data-default="qpcr"></select></div>
+        <div><label for="q-flank">Junction flank</label><input type="number" id="q-flank" value="60" min="10"></div>
+      </div>
+      <button class="go" data-run="qpcr">Design qPCR primers</button>
+    </section>
+
+    <section class="pane" id="pane-dcaps" role="tabpanel" hidden>
+      <p class="mode-note">For a variant too small to size on a gel: engineered mismatches create a restriction site in one allele only.</p>
+      <label for="d-template">Locus sequence</label>
+      <textarea id="d-template" rows="5" placeholder=">locus&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="d-file" accept=".fa,.fasta,.txt"><button class="link" data-demo="dcaps">load example</button></div>
+      <div class="row">
+        <div><label for="d-pos">Variant position <span class="hint">1-based</span></label><input type="number" id="d-pos" min="1" placeholder="1768"></div>
+        <div><label for="d-base">Variant base</label><select id="d-base"><option>A</option><option>C</option><option>G</option><option>T</option></select></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div><label for="d-allele">Create the site in</label><select id="d-allele"><option value="variant">the variant allele</option><option value="reference">the reference allele</option></select></div>
+        <div><label for="d-mm">Max introduced mismatches</label><input type="number" id="d-mm" value="2" min="1" max="4"></div>
+      </div>
+      <label for="d-preset">Preset</label><select id="d-preset" data-preset data-default="genotyping-gel"></select>
+      <button class="go" data-run="dcaps">Find dCAPS assays</button>
+    </section>
+
+    <section class="pane" id="pane-design" role="tabpanel" hidden>
+      <p class="mode-note">General-purpose pair design on any template, with optional regions the amplicon must span or primers must avoid.</p>
+      <label for="x-template">Template</label>
+      <textarea id="x-template" rows="6" placeholder=">template&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="x-file" accept=".fa,.fasta,.txt"><button class="link" data-demo="design">load example</button></div>
+      <label for="x-avoid">Avoid-panel</label>
+      <textarea id="x-avoid" rows="3" placeholder=">paralog&#10;ACGT…"></textarea>
+      <div class="row">
+        <div><label for="x-targets">Must span <span class="hint">e.g. 700-760</span></label><input type="text" id="x-targets" placeholder="700-760" spellcheck="false"></div>
+        <div><label for="x-excludes">Must avoid</label><input type="text" id="x-excludes" placeholder="1-500" spellcheck="false"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div><label for="x-preset">Preset</label><select id="x-preset" data-preset></select></div>
+        <div><label for="x-tails">5′ tails</label><select id="x-tails" data-tails></select></div>
+      </div>
+      <button class="go" data-run="design">Design primers</button>
+    </section>
+
+    <section class="pane" id="pane-check" role="tabpanel" hidden>
+      <p class="mode-note">Evaluate primers you already have: Tm, structure, dimers, and whether they prime on an avoid-panel.</p>
+      <label for="c-primers">Primers <span class="hint">— one per line, <code>name=SEQUENCE</code> or FASTA</span></label>
+      <textarea id="c-primers" rows="5" placeholder="F=CGCTACCGACTCAAGTAAAG&#10;R=CTATCTGTATGCCGCGATG"></textarea>
+      <div class="filerow"><button class="link" data-demo="check">load example</button></div>
+      <label for="c-avoid">Avoid-panel</label>
+      <textarea id="c-avoid" rows="4" placeholder=">kcnh6b_locus&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="c-avoidfile" accept=".fa,.fasta,.txt"></div>
+      <button class="go" data-run="check">Evaluate</button>
+    </section>
+
+    <div class="pane" style="padding-top:0">
+      <details class="adv" id="advanced">
+        <summary>Advanced parameters</summary>
+        <div class="grid2" id="advgrid"></div>
+        <div class="check"><input type="checkbox" id="opt-strict"><label for="opt-strict" style="margin:0;font-weight:400">Strict specificity <span class="hint">— reject any primer that can prime on the panel, even with no product predicted</span></label></div>
+        <div class="check"><input type="checkbox" id="opt-allow"><label for="opt-allow" style="margin:0;font-weight:400">Report pairs that co-amplify the panel instead of discarding them</label></div>
+        <p style="font-size:11.5px;color:var(--ink-soft);margin:10px 0 0">Blank fields keep the preset's value.</p>
+      </details>
+    </div>
+  </div>
+
+  <div id="results">
+    <div class="empty" id="placeholder">
+      <h2>Runs entirely in your browser</h2>
+      <p>The Python package itself is loaded and executed here via WebAssembly — there is no server, and <strong>no sequence you paste ever leaves this machine</strong>. The first run downloads the Python runtime (~12 MB, then cached); after that a design takes a few seconds.</p>
+      <ul>
+        <li><strong>Genotype</strong> — bracket a CRISPR lesion without touching it</li>
+        <li><strong>qPCR</strong> — span an exon junction; graded gDNA protection</li>
+        <li><strong>dCAPS</strong> — turn a 1 bp difference into a band difference</li>
+        <li><strong>Design</strong> — general-purpose, with target and exclude regions</li>
+        <li><strong>Check</strong> — grade primers you already ordered</li>
+      </ul>
+      <p>Pick a mode and press <em>load example</em> to see it work on the bundled mock ohnolog pair.</p>
+    </div>
+    <div id="out" hidden></div>
+  </div>
+</main>
+
+<footer>
+  <p><strong>Not validated against bench outcomes.</strong> The algorithms are tested for correctness, but no one has yet shown these designs succeed more often than Primer3 plus manual checking. Treat the output as a well-reasoned starting point and check it.</p>
+  <p>Genome-scale off-target screening needs <code>blastn</code> or <code>bowtie2</code> and is only available in the command-line version; in the browser, the avoid-panel is whatever you paste. For a whole-genome check, <code>pip install danioprime</code>.</p>
+  <p id="footver">danioprime · <a href="https://github.com/thevarshneylab/danioprime">github.com/thevarshneylab/danioprime</a> · MIT</p>
+</footer>
+
+<script src="./examples.js"></script>
+<script type="module">
+const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/";
+const WHEEL = "./danioprime-0.1.0-py3-none-any.whl";
+const EXAMPLES = "./examples/";
+
+const boot = document.getElementById("boot");
+const bootmsg = document.getElementById("bootmsg");
+const out = document.getElementById("out");
+const placeholder = document.getElementById("placeholder");
+const $ = (id) => document.getElementById(id);
+const nextFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+let py = null, meta = null, busy = false;
+
+function setBoot(msg, isErr) {
+  boot.classList.remove("hidden");
+  boot.classList.toggle("err", !!isErr);
+  bootmsg.textContent = msg;
+}
+
+async function start() {
+  try {
+    setBoot("Downloading the Python runtime (~12 MB, cached afterwards)…");
+    const { loadPyodide } = await import(PYODIDE + "pyodide.mjs");
+    py = await loadPyodide({ indexURL: PYODIDE });
+
+    setBoot("Loading danioprime…");
+    const resp = await fetch(WHEEL);
+    if (!resp.ok) throw new Error(`could not fetch ${WHEEL} (HTTP ${resp.status})`);
+    py.FS.writeFile("/danioprime.whl", new Uint8Array(await resp.arrayBuffer()));
+    // A wheel is a zip, and zipimport reads straight from sys.path, so a
+    // pure-Python package with no dependencies needs no installer at all.
+    py.runPython(`import sys; sys.path.insert(0, "/danioprime.whl")`);
+    meta = py.runPython(`
+import json
+from danioprime.webapp import ui_metadata
+json.dumps(ui_metadata())
+`);
+    meta = JSON.parse(meta);
+    buildForms();
+    $("ver").textContent = `v${meta.version} · Python ${py.runPython("import sys; '.'.join(map(str,sys.version_info[:2]))")} · WebAssembly`;
+    boot.classList.add("hidden");
+    document.querySelectorAll("button.go").forEach((b) => (b.disabled = false));
+  } catch (err) {
+    setBoot(
+      `Could not start: ${err.message}. The page needs network access to the Pyodide CDN on first load. ` +
+      `You can always run danioprime locally instead: pip install danioprime`,
+      true
+    );
+    console.error(err);
+  }
+}
+
+function buildForms() {
+  for (const sel of document.querySelectorAll("select[data-preset]")) {
+    sel.innerHTML =
+      `<option value="default">default — balanced general purpose</option>` +
+      meta.presets.map((p) => `<option value="${esc(p.name)}">${esc(p.name)} — ${esc(p.description)}</option>`).join("");
+    if (sel.dataset.default) sel.value = sel.dataset.default;
+  }
+  for (const sel of document.querySelectorAll("select[data-tails]")) {
+    sel.innerHTML = meta.tail_schemes
+      .map((t) => `<option value="${esc(t.name)}"${t.name === "none" ? " selected" : ""}>${esc(t.name)}${t.name === "none" ? "" : " — " + esc(t.description)}</option>`)
+      .join("");
+  }
+  $("g-nuclease").innerHTML = meta.nucleases
+    .map((n) => `<option value="${esc(n.name)}"${n.name === "SpCas9" ? " selected" : ""}>${esc(n.name)}</option>`)
+    .join("");
+
+  const pretty = {
+    min_tm: "Min Tm (°C)", opt_tm: "Opt Tm (°C)", max_tm: "Max Tm (°C)",
+    max_pair_tm_difference: "Max pair ΔTm", min_gc: "Min GC%", max_gc: "Max GC%",
+    min_length: "Min length", opt_length: "Opt length", max_length: "Max length",
+    min_product_size: "Min product", opt_product_size: "Opt product",
+    max_product_size: "Max product", require_gc_clamp: "3′ GC clamp",
+    max_poly_x: "Max poly-X", max_pairs: "Pairs to report",
+  };
+  $("advgrid").innerHTML = meta.tunable
+    .map((k) => `<div><label for="adv-${k}">${esc(pretty[k] || k)}</label><input type="number" step="any" id="adv-${k}" data-tunable="${k}" placeholder="${esc(meta.defaults[k])}"></div>`)
+    .join("");
+}
+
+function overrides() {
+  const o = {};
+  for (const el of document.querySelectorAll("[data-tunable]")) {
+    if (el.value !== "") o[el.dataset.tunable] = el.value;
+  }
+  return o;
+}
+
+const numbers = (s) =>
+  String(s || "").split(/[,\s]+/).filter(Boolean).map((n) => parseInt(n, 10)).filter((n) => !Number.isNaN(n));
+
+const FIELD_PREFIX = { genotype: "g", qpcr: "q", dcaps: "d", design: "x", check: "c" };
+
+function payloadFor(mode) {
+  const common = {
+    mode,
+    preset: $(`${FIELD_PREFIX[mode]}-preset`)?.value,
+    overrides: overrides(),
+    strict_specificity: $("opt-strict").checked,
+    allow_paralog_amplicon: $("opt-allow").checked,
+  };
+  if (mode === "genotype")
+    return { ...common, template: $("g-template").value, avoid: $("g-avoid").value,
+      protospacer: $("g-proto").value, cut_site: $("g-cut").value || null,
+      nuclease: $("g-nuclease").value, no_pam: $("g-nopam").checked,
+      protected: $("g-protected").value, min_flank: $("g-minflank").value,
+      max_flank: $("g-maxflank").value, tails: $("g-tails").value };
+  if (mode === "qpcr")
+    return { ...common, template: $("q-template").value, avoid: $("q-avoid").value,
+      junctions: numbers($("q-junctions").value), gtf: $("q-gtf").value,
+      transcript_id: $("q-txid").value, require_junction_spanning: $("q-span").checked,
+      junction_flank: $("q-flank").value };
+  if (mode === "dcaps")
+    return { ...common, template: $("d-template").value, variant_position: $("d-pos").value,
+      variant_base: $("d-base").value, cut_allele: $("d-allele").value,
+      max_introduced_mismatches: $("d-mm").value };
+  if (mode === "design")
+    return { ...common, template: $("x-template").value, avoid: $("x-avoid").value,
+      targets: $("x-targets").value, excludes: $("x-excludes").value, tails: $("x-tails").value };
+  return { ...common, primers: $("c-primers").value, avoid: $("c-avoid").value };
+}
+
+let lastResult = null;
+
+async function runMode(mode, btn) {
+  if (busy || !py) return;
+  busy = true;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Working…";
+  placeholder.hidden = true;
+  out.hidden = false;
+  out.innerHTML = `<div class="msg" style="background:var(--accent-soft)">Running — the page is unresponsive while Python works. A few seconds for a small locus, longer with a large avoid-panel.</div>`;
+  await nextFrame();
+  try {
+    const payload = JSON.stringify(payloadFor(mode));
+    py.globals.set("_payload", payload);
+    const text = py.runPython(`
+from danioprime.webapp import run_json
+run_json(_payload)
+`);
+    lastResult = JSON.parse(text);
+    render(lastResult);
+  } catch (err) {
+    out.innerHTML = `<div class="msg bad"><strong>The Python runtime raised an error.</strong>\n${esc(err.message)}\n\nThis is a bug — please report it with the inputs you used.</div>`;
+    console.error(err);
+  } finally {
+    busy = false;
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+function renderTable(t) {
+  const head = t.columns.map((c) => `<th>${esc(c)}</th>`).join("");
+  const rows = t.rows
+    .map((r) => "<tr>" + r.map((c, i) => `<td class="${i === 0 || typeof c === "string" && c.length > 24 ? "txt" : ""}">${esc(c)}</td>`).join("") + "</tr>")
+    .join("");
+  return `<h2 class="sec">${esc(t.title)}</h2><div class="wrap"><table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function renderPair(p) {
+  const flag = p.specific
+    ? `<span class="flag ok">specific</span>`
+    : `<span class="flag no">cross-amplifies</span>`;
+  const junction = p.spans_junction != null ? `<span class="flag neutral">spans junction ${p.spans_junction}</span>` : "";
+  const terms = Object.entries(p.penalty_terms || {})
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([k, v]) => `<tr><td>${esc(k)}</td><td style="text-align:right">${v.toFixed(2)}</td></tr>`)
+    .join("");
+  return `<div class="card">
+    <div class="top"><span class="nm">${esc(p.name)}</span>
+      <span class="sz">${p.product_size} bp · ΔTm ${p.tm_diff} · dimer ${p.hetero_dimer_dg}</span>
+      ${flag}${junction}<span class="sz" style="margin-left:auto">penalty ${p.penalty}</span></div>
+    <div class="body">
+      <div class="oligo"><span class="dir">F</span><span class="seq">${esc(p.forward)}</span>
+        <span class="num">${p.forward_len} nt · ${p.forward_tm}°C · ${p.forward_gc}% · ${esc(p.forward_pos)}</span></div>
+      <div class="oligo"><span class="dir">R</span><span class="seq">${esc(p.reverse)}</span>
+        <span class="num">${p.reverse_len} nt · ${p.reverse_tm}°C · ${p.reverse_gc}% · ${esc(p.reverse_pos)}</span></div>
+      ${p.notes?.length ? `<ul class="notes">${p.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+      ${terms ? `<details class="terms"><summary>why this ranking</summary><table>${terms}</table></details>` : ""}
+    </div></div>`;
+}
+
+function render(r) {
+  if (!r.ok) {
+    out.innerHTML = `<div class="msg bad">${esc(r.error)}</div>`;
+    return;
+  }
+  const parts = [];
+  for (const w of r.warnings || []) parts.push(`<div class="msg warn">${esc(w)}</div>`);
+  if (r.pairs?.length === 0 && r.diagnosis) parts.push(`<div class="msg warn"><strong>No pair satisfied the constraints.</strong>\n${esc(r.diagnosis)}</div>`);
+
+  if (r.pairs?.length) {
+    parts.push(`<h2 class="sec">${r.pairs.length} pair${r.pairs.length > 1 ? "s" : ""}</h2><div class="cards">${r.pairs.map(renderPair).join("")}</div>`);
+  }
+  for (const t of r.tables || []) parts.push(renderTable(t));
+  if (r.order_sheet) {
+    parts.push(`<h2 class="sec">Order sheet — ${esc(r.order_scheme || "")}</h2><pre class="report">${esc(r.order_sheet)}</pre>`);
+    for (const n of r.order_notes || []) parts.push(`<div class="msg warn" style="margin-top:8px">${esc(n)}</div>`);
+  }
+  if (r.report) parts.push(`<h2 class="sec">Full report</h2><pre class="report">${esc(r.report)}</pre>`);
+
+  parts.push(`<div class="dl">
+    <button data-dl="tsv">Download TSV</button>
+    <button data-dl="json">Download JSON</button>
+    ${r.order_sheet ? `<button data-dl="order">Download order sheet</button>` : ""}
+    <button data-dl="copy">Copy primers</button></div>`);
+  out.innerHTML = parts.join("");
+}
+
+function download(name, text, type = "text/plain") {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+document.addEventListener("click", async (ev) => {
+  const runBtn = ev.target.closest("button.go[data-run]");
+  if (runBtn) return runMode(runBtn.dataset.run, runBtn);
+
+  const dl = ev.target.closest("button[data-dl]");
+  if (dl && lastResult) {
+    const kind = dl.dataset.dl;
+    const stamp = (lastResult.mode || "danioprime");
+    if (kind === "tsv") download(`${stamp}_primers.tsv`, lastResult.tsv, "text/tab-separated-values");
+    if (kind === "json") download(`${stamp}_result.json`, lastResult.json, "application/json");
+    if (kind === "order") download(`${stamp}_order.tsv`, lastResult.order_sheet, "text/tab-separated-values");
+    if (kind === "copy") {
+      const txt = (lastResult.pairs || [])
+        .map((p) => `${p.name}_F\t${p.forward}\n${p.name}_R\t${p.reverse}`)
+        .join("\n") || lastResult.tsv;
+      try { await navigator.clipboard.writeText(txt); dl.textContent = "Copied"; setTimeout(() => (dl.textContent = "Copy primers"), 1500); }
+      catch { download(`${stamp}_primers.txt`, txt); }
+    }
+    return;
+  }
+
+  const demo = ev.target.closest("button[data-demo]");
+  if (demo) return loadDemo(demo.dataset.demo, demo);
+
+  const tab = ev.target.closest("nav.modes button");
+  if (tab) selectMode(tab.dataset.mode);
+});
+
+function selectMode(mode) {
+  for (const b of document.querySelectorAll("nav.modes button"))
+    b.setAttribute("aria-selected", String(b.dataset.mode === mode));
+  for (const p of document.querySelectorAll(".pane[id^=pane-]"))
+    p.hidden = p.id !== `pane-${mode}`;
+  history.replaceState(null, "", `#${mode}`);
+}
+
+async function fetchExample(name) {
+  // Generated by web/build_site.py from examples/, and checked in CI, so the
+  // demo can never drift from the dataset the repository ships.
+  const bundled = globalThis.DP_EXAMPLES?.[name];
+  if (bundled) return bundled;
+  const r = await fetch(EXAMPLES + name);
+  if (!r.ok) throw new Error(`${name} is not bundled with this page (HTTP ${r.status})`);
+  return r.text();
+}
+
+async function loadDemo(mode, btn) {
+  const was = btn.textContent;
+  btn.textContent = "loading…";
+  try {
+    if (mode === "genotype" || mode === "design" || mode === "dcaps") {
+      const [a, b] = await Promise.all([fetchExample("kcnh6a_locus.fa"), fetchExample("kcnh6b_locus.fa")]);
+      if (mode === "genotype") {
+        $("g-template").value = a; $("g-avoid").value = b;
+        $("g-proto").value = "AAGCCCTGTTATGTGCAACG"; $("g-protected").value = 60;
+        $("g-preset").value = "genotyping-gel";
+      } else if (mode === "design") {
+        $("x-template").value = a; $("x-avoid").value = b; $("x-targets").value = "1700-1800";
+      } else {
+        $("d-template").value = a; $("d-pos").value = 1768; $("d-base").value = "C";
+        $("d-preset").value = "genotyping-gel";
+        for (const [k, v] of [["min_product_size", 150], ["max_product_size", 450]])
+          $(`adv-${k}`).value = v;
+      }
+    } else if (mode === "qpcr") {
+      const [a, b] = await Promise.all([fetchExample("kcnh6a_transcript.fa"), fetchExample("kcnh6b_transcript.fa")]);
+      $("q-template").value = a; $("q-avoid").value = b; $("q-junctions").value = "210, 540";
+      $("q-preset").value = "qpcr";
+    } else {
+      $("c-primers").value = "R_conserved=CTATCTGTATGCCGCGATG\nF_unique=GTGGCTCATAACCTGTGATAG";
+      $("c-avoid").value = await fetchExample("kcnh6b_locus.fa");
+    }
+  } catch (err) {
+    alert(`Could not load the example: ${err.message}\n\nThe example files live beside this page in the repository; paste your own sequence instead.`);
+  } finally {
+    btn.textContent = was;
+  }
+}
+
+for (const [file, target] of [["g-file", "g-template"], ["g-avoidfile", "g-avoid"], ["q-file", "q-template"],
+                              ["d-file", "d-template"], ["x-file", "x-template"], ["c-avoidfile", "c-avoid"]]) {
+  $(file)?.addEventListener("change", async (ev) => {
+    const f = ev.target.files?.[0];
+    if (f) $(target).value = await f.text();
+  });
+}
+
+const MODE_LIST = [["genotype", "Genotype"], ["qpcr", "qPCR"], ["dcaps", "dCAPS"], ["design", "Design"], ["check", "Check"]];
+$("tabs").innerHTML = MODE_LIST.map(([k, lbl], i) =>
+  `<button role="tab" data-mode="${k}" aria-selected="${i === 0}">${lbl}</button>`).join("");
+document.querySelectorAll("button.go").forEach((b) => (b.disabled = true));
+selectMode(MODE_LIST.some(([k]) => `#${k}` === location.hash) ? location.hash.slice(1) : "genotype");
+start();
+</script>
+</body>
+</html>
