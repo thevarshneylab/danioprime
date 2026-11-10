@@ -1,0 +1,19 @@
+# Normalise line endings in the repository and check everything out as LF.
+#
+# Without this, Windows checkouts translate LF to CRLF in the working tree,
+# and web/build_site.py --check compares the published site byte-for-byte
+# against freshly generated content that always uses LF. The result was a CI
+# failure reporting docs/ as "out of date" when nothing had changed.
+* text=auto eol=lf
+
+# Generated and binary artefacts: never translate these.
+*.whl binary
+docs/examples.js text eol=lf
+docs/.nojekyll  text eol=lf
+
+# Biological sequence data: byte-identical across platforms, since the example
+# dataset is regenerated and diffed in CI.
+*.fa  text eol=lf
+*.gtf text eol=lf
+*.vcf text eol=lf
+*.bed text eol=lf

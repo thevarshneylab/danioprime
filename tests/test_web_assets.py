@@ -255,3 +255,30 @@ class TestWebScripts:
             for rel in re.findall(r'new URL\("([^"]+)", import\.meta\.url\)', source):
                 resolved = (script.parent / rel).resolve()
                 assert resolved.exists(), f"{script.name} points at missing {rel}"
+
+
+class TestLineEndings:
+    """Generated artefacts are compared byte-for-byte, so their newlines are
+    part of the contract.
+
+    A Windows checkout translates LF to CRLF in the working tree unless told
+    otherwise, which made `build_site.py --check` report docs/ as out of date
+    on Windows CI when nothing had changed.
+    """
+
+    def test_gitattributes_pins_line_endings(self):
+        path = ROOT / ".gitattributes"
+        assert path.exists(), "no .gitattributes; Windows checkouts will use CRLF"
+        text = path.read_text()
+        assert "eol=lf" in text
+        assert "*.whl binary" in text
+
+    def test_generated_site_files_have_no_carriage_returns(self):
+        for name in ("index.html", "examples.js", ".nojekyll"):
+            data = (DOCS / name).read_bytes()
+            assert b"\r\n" not in data, f"docs/{name} contains CRLF"
+
+    def test_example_data_has_no_carriage_returns(self):
+        for path in sorted((ROOT / "examples").glob("*")):
+            if path.suffix in {".fa", ".gtf", ".vcf"}:
+                assert b"\r\n" not in path.read_bytes(), f"{path.name} contains CRLF"
