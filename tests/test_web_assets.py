@@ -9,6 +9,8 @@ diffed); here we check everything that can be checked from the repo alone.
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -215,3 +217,41 @@ class TestSmokeTestCoverage:
     def test_smoke_test_checks_semantics_not_just_absence_of_errors(self):
         source = (ROOT / "web" / "smoke.mjs").read_text()
         assert source.count("expect:") >= len(MODES)
+
+
+class TestWebScripts:
+    """The helper scripts CI depends on must point at files that exist.
+
+    `pyodide_version.mjs` kept reading the repo root after index.html moved
+    into web/; it broke CI and no local run reproduced it, because the script
+    had last been exercised before the move.
+    """
+
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+    def test_pyodide_version_script_reports_the_pinned_version(self):
+        result = subprocess.run(
+            ["node", str(ROOT / "web" / "pyodide_version.mjs")],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        assert result.returncode == 0, result.stderr
+        reported = result.stdout.strip()
+        expected = re.search(r"/v([0-9][^/\"]*)/full/", INDEX.read_text()).group(1)
+        assert reported == expected
+
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+    def test_web_scripts_parse(self):
+        for script in sorted((ROOT / "web").glob("*.mjs")):
+            result = subprocess.run(
+                ["node", "--check", str(script)], capture_output=True, text=True
+            )
+            assert result.returncode == 0, f"{script.name}: {result.stderr}"
+
+    def test_scripts_reference_only_paths_that_exist(self):
+        """Every repo-relative path literal in web/ must resolve."""
+        for script in sorted((ROOT / "web").glob("*.mjs")):
+            source = script.read_text()
+            for rel in re.findall(r'new URL\("([^"]+)", import\.meta\.url\)', source):
+                resolved = (script.parent / rel).resolve()
+                assert resolved.exists(), f"{script.name} points at missing {rel}"
