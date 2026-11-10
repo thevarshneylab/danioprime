@@ -659,7 +659,7 @@ def cmd_dcaps(args: argparse.Namespace) -> int:
     if args.json_out:
         import json
 
-        Path(args.json_out).write_text(json.dumps(payload, indent=2) + "\n")
+        Path(args.json_out).write_text(json.dumps(payload, indent=2) + "\n", newline="\n")
     return 0 if assays else 1
 
 
@@ -698,7 +698,8 @@ def cmd_junction(args: argparse.Namespace) -> int:
         from .report.writers import result_to_dict
 
         Path(args.json_out).write_text(
-            json.dumps({k: result_to_dict(v) for k, v in designs.items()}, indent=2) + "\n"
+            json.dumps({k: result_to_dict(v) for k, v in designs.items()}, indent=2) + "\n",
+            newline="\n",
         )
     if not ok:
         sys.stderr.write(

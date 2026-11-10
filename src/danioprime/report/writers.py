@@ -130,7 +130,7 @@ def write_json(
     text = json.dumps(result_to_dict(result, extra=extra), indent=2) + "\n"
     if path is None:
         return text
-    Path(path).write_text(text)
+    Path(path).write_text(text, newline="\n")
     return str(path)
 
 
@@ -184,7 +184,7 @@ def write_bed(
     text = "\n".join(lines) + "\n"
     if path is None:
         return text
-    Path(path).write_text(text)
+    Path(path).write_text(text, newline="\n")
     return str(path)
 
 
@@ -301,7 +301,9 @@ def emit(text: str, path: str | Path | None, stream: TextIO | None = None) -> No
     if path is None:
         (stream or sys.stdout).write(text if text.endswith("\n") else text + "\n")
     else:
-        Path(path).write_text(text if text.endswith("\n") else text + "\n")
+        Path(path).write_text(
+            text if text.endswith("\n") else text + "\n", newline="\n"
+        )
 
 
 def summarise_iterable(rows: Iterable[dict[str, Any]], columns: Sequence[str]) -> str:

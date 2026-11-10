@@ -46,7 +46,9 @@ def mutate(seq: str, rate: float) -> str:
 
 
 def write_fasta(path: Path, records: list[tuple[str, str, str]], wrap: int = 70) -> None:
-    with path.open("w") as fh:
+    # newline="\n" keeps output byte-identical on every platform. Text mode
+    # emits CRLF on Windows, and CI regenerates this dataset and diffs it.
+    with path.open("w", newline="\n") as fh:
         for name, desc, seq in records:
             fh.write(f">{name}" + (f" {desc}" if desc else "") + "\n")
             for i in range(0, len(seq), wrap):
@@ -132,7 +134,7 @@ def main() -> None:
     )
 
     # --- GTF for the kcnh6a locus (coordinates within the locus FASTA) ---
-    with (HERE / "kcnh6a.gtf").open("w") as fh:
+    with (HERE / "kcnh6a.gtf").open("w", newline="\n") as fh:
         fh.write("#!genome-build mock-GRCz12tu-like\n")
         fh.write("# coordinates are within kcnh6a_locus.fa, not a real genome\n")
         for i, (start, length) in enumerate(zip(a_exon_starts, a_exon_lens, strict=True), 1):
@@ -150,7 +152,7 @@ def main() -> None:
     # attractive primer territory flanking the cut site.
     cut = a_exon_starts[1] + 40 + 17  # protospacer starts at exon2+40
     positions = [cut - 180, cut - 120, cut + 150, cut + 240, cut + 600]
-    with (HERE / "strain_variants.vcf").open("w") as fh:
+    with (HERE / "strain_variants.vcf").open("w", newline="\n") as fh:
         fh.write("##fileformat=VCFv4.2\n")
         fh.write("##source=danioprime example data (synthetic)\n")
         fh.write(f"##contig=<ID=kcnh6a_locus,length={len(a_locus)}>\n")
@@ -175,7 +177,8 @@ def main() -> None:
     # --- summary ---------------------------------------------------------
     summary = HERE / "DATA.md"
     summary.write_text(
-        f"""# Example dataset (synthetic)
+        newline="\n",
+        data=f"""# Example dataset (synthetic)
 
 Regenerate with `python make_example_data.py`. Deterministic: seed 20260211.
 

@@ -207,7 +207,7 @@ def bowtie2_sites(
         raise ExternalToolError("bowtie2 is not installed; `conda install -c bioconda bowtie2`")
     with tempfile.TemporaryDirectory(prefix="danioprime_") as tmp:
         reads = Path(tmp) / "primers.fa"
-        reads.write_text("".join(f">{n}\n{s}\n" for n, s in primers.items()))
+        reads.write_text("".join(f">{n}\n{s}\n" for n, s in primers.items()), newline="\n")
         cmd = [
             "bowtie2",
             "-f",

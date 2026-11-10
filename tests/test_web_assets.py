@@ -282,3 +282,74 @@ class TestLineEndings:
         for path in sorted((ROOT / "examples").glob("*")):
             if path.suffix in {".fa", ".gtf", ".vcf"}:
                 assert b"\r\n" not in path.read_bytes(), f"{path.name} contains CRLF"
+
+
+class TestOutputDeterminism:
+    """Files the package writes must be byte-identical on every platform.
+
+    Python's text mode translates "\\n" to the platform line ending, so on
+    Windows the example generator produced CRLF while the committed data was
+    LF, and CI's "example data is reproducible" check failed on a dataset that
+    had not changed. Anything that writes a file users commit, diff or compare
+    has to pin ``newline="\\n"``.
+
+    Test code is exempt: it writes temporary files that are read back by the
+    same process on the same platform.
+    """
+
+    SCOPE = ("src", "examples", "web")
+
+    def _unpinned(self) -> list[str]:
+        import ast
+
+        offenders: list[str] = []
+        for root in self.SCOPE:
+            for path in sorted((ROOT / root).rglob("*.py")):
+                for node in ast.walk(ast.parse(path.read_text())):
+                    if not isinstance(node, ast.Call):
+                        continue
+                    func = node.func
+                    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+                    if name not in {"write_text", "open"}:
+                        continue
+                    if name == "open":
+                        mode = None
+                        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+                            mode = node.args[1].value
+                        for kw in node.keywords:
+                            if kw.arg == "mode" and isinstance(kw.value, ast.Constant):
+                                mode = kw.value.value
+                        if not mode or "w" not in mode or "b" in mode:
+                            continue
+                    if not any(kw.arg == "newline" for kw in node.keywords):
+                        rel = path.relative_to(ROOT)
+                        offenders.append(f"{rel}:{node.lineno} {name}()")
+        return offenders
+
+    def test_package_text_writes_pin_the_newline(self):
+        offenders = self._unpinned()
+        assert not offenders, "text writes without newline='\\n':\n  " + "\n  ".join(offenders)
+
+    def test_regenerating_the_example_data_changes_nothing(self):
+        """The strongest form: run the generator and diff every output."""
+        import subprocess
+
+        examples = ROOT / "examples"
+        before = {
+            p.name: p.read_bytes()
+            for p in sorted(examples.iterdir())
+            if p.suffix in {".fa", ".gtf", ".vcf", ".md"}
+        }
+        result = subprocess.run(
+            [sys.executable, "make_example_data.py"],
+            cwd=examples,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        changed = [
+            name
+            for name, data in before.items()
+            if (examples / name).read_bytes() != data
+        ]
+        assert not changed, f"regeneration is not deterministic: {changed}"

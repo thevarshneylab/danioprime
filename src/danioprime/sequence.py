@@ -261,7 +261,10 @@ def load_sequence(spec: str | Path) -> SeqRecord:
 
 def write_fasta(records: Iterable[SeqRecord], path: str | Path, *, wrap: int = 60) -> None:
     """Write records to a FASTA file."""
-    with Path(path).open("w") as fh:
+    # newline="\n" so output is byte-identical on every platform: text mode
+    # would emit CRLF on Windows, and the example dataset is regenerated and
+    # diffed in CI.
+    with Path(path).open("w", newline="\n") as fh:
         for rec in records:
             header = f">{rec.name}" + (f" {rec.description}" if rec.description else "")
             fh.write(header + "\n")
@@ -325,7 +328,7 @@ class IndexedFasta:
                 pos += len(raw)
             if name is not None:
                 records.append((name, length, offset, line_bases, line_width))
-        with fai.open("w") as out:
+        with fai.open("w", newline="\n") as out:
             for rec in records:
                 out.write("\t".join(str(x) for x in rec) + "\n")
 

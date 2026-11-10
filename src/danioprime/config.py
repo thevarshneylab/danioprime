@@ -168,7 +168,7 @@ class DesignParams:
         return asdict(self)
 
     def to_json(self, path: str | Path) -> None:
-        Path(path).write_text(json.dumps(self.to_dict(), indent=2) + "\n")
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2) + "\n", newline="\n")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DesignParams:
