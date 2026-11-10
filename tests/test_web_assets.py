@@ -59,11 +59,25 @@ class TestWheelAsset:
             if n.startswith("danioprime/") and n.endswith(".py")
         }
         src = ROOT / "src" / "danioprime"
-        on_disk = {str(p.relative_to(src)) for p in src.rglob("*.py")}
+        # as_posix(), not str(): on Windows str() yields backslashes while a
+        # wheel always stores forward slashes, and the mismatch would report a
+        # perfectly fresh wheel as stale.
+        on_disk = {p.relative_to(src).as_posix() for p in src.rglob("*.py")}
         missing = on_disk - in_wheel
         extra = in_wheel - on_disk
         assert not missing, f"the committed wheel is stale; it lacks: {sorted(missing)}"
         assert not extra, f"the committed wheel holds modules no longer in src/: {sorted(extra)}"
+
+    def test_module_paths_are_compared_posix_style(self):
+        """Regression guard: a backslash here reported a fresh wheel as stale.
+
+        The first Windows CI run failed on exactly this, and a staleness check
+        that cries wolf is worse than none -- people learn to ignore it.
+        """
+        src = ROOT / "src" / "danioprime"
+        paths = {p.relative_to(src).as_posix() for p in src.rglob("*.py")}
+        assert any("/" in p for p in paths), "expected nested modules in the package"
+        assert all("\\" not in p for p in paths)
 
     def test_wheel_declares_no_runtime_dependencies(self):
         """The browser build works precisely because there is nothing to install."""

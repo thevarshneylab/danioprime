@@ -18,10 +18,11 @@
  */
 
 import { readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { basename, join, resolve } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: the latter yields "/C:/..." on Windows.
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const INDEX_URL = process.env.PYODIDE_INDEX || "./node_modules/pyodide/";
 const EXAMPLES = join(ROOT, "examples");
 
@@ -121,7 +122,7 @@ py.runPython(`import sys; sys.path.insert(0, "/danioprime.whl")`);
 const version = py.runPython(`import danioprime; danioprime.__version__`);
 const pyver = py.runPython(`import sys; ".".join(map(str, sys.version_info[:3]))`);
 console.log(`danioprime ${version} on CPython ${pyver} (WebAssembly), booted in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-console.log(`wheel: ${wheel.split("/").pop()}\n`);
+console.log(`wheel: ${basename(wheel)}\n`);
 
 function call(payload) {
   py.globals.set("_payload", JSON.stringify(payload));
