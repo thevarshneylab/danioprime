@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.so
+.DS_Store
+# large reference data users may drop in
+reference/
+*.fa.gz
+*.fai
+*.bt2
