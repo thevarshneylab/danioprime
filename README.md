@@ -78,6 +78,7 @@ A variant anywhere in the footprint is penalised; a variant within the 3'-termin
 | `qpcr` | A junction-spanning primer where possible, with an explicit genomic-DNA protection verdict per pair |
 | `dcaps` | Engineered mismatches that create an allele-specific restriction site, with predicted digests for both alleles |
 | `junction` | One primer in genomic sequence outside the homology arm, one in the cassette — so the assay cannot read the donor plasmid instead of the integrated allele |
+| `insitu` | Riboprobe template with a T7, T3 or SP6 promoter in either orientation, checked for **probe-level** cross-hybridisation |
 | `design` | General-purpose target/exclude-region design |
 | `check` | Evaluate primers you already have, including against an avoid-panel |
 
@@ -145,6 +146,32 @@ danioprime dcaps --template examples/kcnh6a_locus.fa \
 ```
 
 Diagnostic bands are separated from bands common to both alleles, because only the former carry genotype information. The default keeps the 3'-terminal base matched, since a terminal mismatch cripples extension.
+
+### An in situ probe that does not stain the ohnolog too
+
+```bash
+danioprime insitu \
+    --template examples/kcnh6a_transcript.fa \
+    --avoid examples/kcnh6b_transcript.fa \
+    --scheme riboprobe-dual-t7-sp6
+```
+
+Two things here that a primer-shaped analysis gets wrong.
+
+**Promoter orientation decides which strand you get.** On the *reverse* primer a promoter transcribes the antisense strand — the probe that detects mRNA. On the *forward* primer it transcribes the sense strand, the negative control. Get it backwards and the probe cannot hybridise while the control can, and the experiment just looks "failed". T7, T3 and SP6 are all available in both orientations; a **dual** scheme puts different promoters at the two ends so one PCR product templates both probes and no second reaction is needed.
+
+**Cross-hybridisation is not primer specificity.** Everywhere else in this package, specificity is decided at a primer's 3' end, because that is what a polymerase needs. A riboprobe has no 3' end that matters: it is hundreds of bases of RNA and will bind anything similar enough along its whole length. So this mode analyses the amplicon body, not its ends:
+
+```
+Probe cross-hybridisation (whole-amplicon, not primer 3' ends):
+  pair                 cross-hybridises  longest shared block
+  -------------------  ----------------  -------------------------
+  kcnh6a-201_probe_p1  YES               496 nt @ 93% (kcnh6b-201)
+```
+
+That pair's primers are *perfectly* specific — the reverse primer discriminates `kcnh6b` by a 3'-terminal mismatch and no product is predicted on the panel. The probe made from it would nonetheless stain both genes. A tool that only checked primers would have called it clean, and the published expression pattern would belong to two genes.
+
+The thresholds (85% identity over ≥100 nt) are calibrated rather than guessed — see [`docs/algorithm.md`](docs/algorithm.md#in-situ-probes).
 
 ### Check primers you already have
 

@@ -36,6 +36,10 @@ class Tail:
     #: Companion oligo that must also be ordered, if any.
     companion: str = ""
     companion_note: str = ""
+    #: True for RNA-polymerase promoters, which have their own ordering rules.
+    is_promoter: bool = False
+    #: Reference the sequence is taken from.
+    source: str = ""
 
     def __len__(self) -> int:
         return len(self.seq)
@@ -68,39 +72,76 @@ TAILS: dict[str, Tail] = {
             "size rather than a +/-1 nt doublet (Brownstein et al. 1996)"
         ),
     ),
+    # Promoter consensus sequences as given in Thermo Fisher's "DNA Template
+    # Preparation for in vitro Transcription" guide (MAN0011982). In each the
+    # final G is the +1 base of the transcript; the bases after it are part of
+    # the consensus and improve initiation efficiency.
     "T7": Tail(
         name="T7",
         seq="TAATACGACTCACTATAGGG",
         purpose="T7 promoter for in vitro transcription of a riboprobe or sgRNA template",
+        is_promoter=True,
+        source="Thermo Fisher MAN0011982 consensus",
     ),
     "T3": Tail(
         name="T3",
         seq="AATTAACCCTCACTAAAGGG",
         purpose="T3 promoter for in vitro transcription",
+        is_promoter=True,
+        source="Thermo Fisher MAN0011982 consensus",
     ),
     "SP6": Tail(
         name="SP6",
-        seq="ATTTAGGTGACACTATAG",
+        seq="ATTTAGGTGACACTATAGAA",
         purpose="SP6 promoter for in vitro transcription",
+        is_promoter=True,
+        source="Thermo Fisher MAN0011982 consensus",
     ),
 }
 
 #: Tail combinations for named assay styles.
+#:
+#: Promoter orientation decides which strand is transcribed, and getting it
+#: backwards yields a probe that cannot hybridise: a promoter on the **reverse**
+#: primer transcribes the antisense strand, which is the probe that detects
+#: mRNA. On the **forward** primer it transcribes the sense strand, which is the
+#: negative control.
 TAIL_SCHEMES: dict[str, dict[str, str]] = {
     "fluorescent": {"forward": "M13F", "reverse": "pigtail"},
     "m13-sequencing": {"forward": "M13F", "reverse": "M13R"},
+    # Antisense probe: the one you hybridise.
     "riboprobe-t7": {"reverse": "T7"},
+    "riboprobe-t3": {"reverse": "T3"},
     "riboprobe-sp6": {"reverse": "SP6"},
+    # Sense control: same template, promoter at the other end.
+    "riboprobe-t7-sense": {"forward": "T7"},
+    "riboprobe-t3-sense": {"forward": "T3"},
+    "riboprobe-sp6-sense": {"forward": "SP6"},
+    # Different promoters at each end, so one PCR product serves as template
+    # for both the antisense probe and its sense control.
+    "riboprobe-dual-t7-sp6": {"forward": "SP6", "reverse": "T7"},
+    "riboprobe-dual-t7-t3": {"forward": "T3", "reverse": "T7"},
     "none": {},
 }
 
 SCHEME_DESCRIPTIONS: dict[str, str] = {
     "fluorescent": "M13F-tailed forward + pig-tailed reverse; needs a labelled M13F oligo too",
     "m13-sequencing": "M13F/M13R tails so one pair of sequencing primers serves every amplicon",
-    "riboprobe-t7": "T7 promoter on the reverse primer: transcribes an antisense probe",
-    "riboprobe-sp6": "SP6 promoter on the reverse primer: transcribes an antisense probe",
+    "riboprobe-t7": "T7 on the reverse primer: transcribes the antisense probe",
+    "riboprobe-t3": "T3 on the reverse primer: transcribes the antisense probe",
+    "riboprobe-sp6": "SP6 on the reverse primer: transcribes the antisense probe",
+    "riboprobe-t7-sense": "T7 on the forward primer: transcribes the sense (control) probe",
+    "riboprobe-t3-sense": "T3 on the forward primer: transcribes the sense (control) probe",
+    "riboprobe-sp6-sense": "SP6 on the forward primer: transcribes the sense (control) probe",
+    "riboprobe-dual-t7-sp6": "SP6 forward + T7 reverse: one product makes both probes",
+    "riboprobe-dual-t7-t3": "T3 forward + T7 reverse: one product makes both probes",
     "none": "no tails",
 }
+
+#: Schemes that attach an RNA-polymerase promoter.
+RIBOPROBE_SCHEMES = tuple(
+    name for name, mapping in TAIL_SCHEMES.items() if name.startswith("riboprobe")
+)
 
 
 def register_tail(name: str, seq: str, purpose: str = "user-supplied") -> Tail:
@@ -253,12 +294,39 @@ def reaction_plan(pairs: Iterable[PrimerPair], scheme: str = "none") -> Reaction
             "Reported product sizes exclude the tails. Add 18 nt (M13F) and 7 nt "
             "(pig-tail) to predict the fragment-analysis peak position."
         )
-    if scheme in {"riboprobe-t7", "riboprobe-sp6"}:
-        promoter = "T7" if scheme.endswith("t7") else "SP6"
+    if scheme in RIBOPROBE_SCHEMES:
+        mapping = TAIL_SCHEMES[scheme]
+        fwd, rev = mapping.get("forward"), mapping.get("reverse")
+        if fwd and rev:
+            plan.notes.append(
+                f"Dual promoters: {rev} on the reverse primer and {fwd} on the forward. "
+                f"One PCR product is therefore the template for both probes -- transcribe "
+                f"it with {rev} polymerase for the antisense probe you hybridise, and with "
+                f"{fwd} polymerase for the sense control. No second PCR is needed."
+            )
+        elif rev:
+            plan.notes.append(
+                f"The {rev} promoter is on the reverse primer, so transcription from the "
+                f"purified product yields the ANTISENSE strand -- the probe that detects "
+                f"mRNA. For a sense control, run a second PCR with the "
+                f"'{scheme}-sense' scheme, or use a dual-promoter scheme to get both from "
+                f"one product."
+            )
+        elif fwd:
+            plan.notes.append(
+                f"The {fwd} promoter is on the forward primer, so transcription yields the "
+                f"SENSE strand. That is the negative control, not the probe: a sense "
+                f"riboprobe should give no specific signal. Use '{scheme.removesuffix('-sense')}' "
+                f"for the antisense probe itself."
+            )
         plan.notes.append(
-            f"The {promoter} promoter is on the reverse primer, so in vitro "
-            "transcription from the purified product yields an antisense probe. "
-            "Put the promoter on the forward primer instead for a sense control."
+            "Transcription from a blunt PCR end is less efficient than from linearised "
+            "plasmid. If yield is low, add about five arbitrary bases 5' of the promoter "
+            "when ordering, so the polymerase has a footprint beyond the duplex end."
+        )
+        plan.notes.append(
+            "Gel-purify or column-clean the product before transcription: residual primers "
+            "and dNTPs carry over and depress yield."
         )
     if scheme == "m13-sequencing":
         plan.notes.append(

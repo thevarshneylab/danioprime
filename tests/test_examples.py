@@ -146,3 +146,70 @@ class TestExampleWorkflow:
             heterozygous_only=True,
         )
         assert het_tu.total_length < all_tu.total_length
+
+
+class TestInSituExample:
+    """The dataset must demonstrate the in situ point, or the docs are bluffing.
+
+    Ohnolog coding sequence is usually too conserved for any probe to
+    discriminate, while the 3' UTR diverges fast enough that a specific probe
+    can be placed there. If that contrast ever stops holding in the example
+    data, the README's in situ section becomes a claim with nothing behind it.
+    """
+
+    @pytest.fixture
+    def transcripts(self, example_dir):
+        return (
+            read_single_fasta(example_dir / "kcnh6a_transcript.fa"),
+            ParalogPanel.from_fasta(str(example_dir / "kcnh6b_transcript.fa")),
+        )
+
+    #: Coding sequence ends here in the example transcript.
+    CDS_END = 800
+
+    def test_a_probe_over_the_coding_region_cross_hybridises(self, transcripts):
+        from danioprime.assays.insitu import assess_probe
+
+        tx, panel = transcripts
+        result = assess_probe(tx.seq[100 : self.CDS_END - 100], panel)
+        assert result.will_cross_hybridise
+        assert "probe body" in result.verdict()
+
+    def test_a_probe_over_the_three_prime_utr_is_clean(self, transcripts):
+        from danioprime.assays.insitu import assess_probe
+
+        tx, panel = transcripts
+        assert len(tx.seq) > self.CDS_END + 200, "the example transcript has no 3' UTR"
+        result = assess_probe(tx.seq[self.CDS_END + 20 :], panel)
+        assert not result.will_cross_hybridise
+
+    def test_the_demo_design_reproduces_both_outcomes(self, transcripts):
+        from danioprime.assays.insitu import design_insitu
+        from danioprime.design.regions import Interval, IntervalSet
+
+        tx, panel = transcripts
+        params = get_preset("insitu-probe").replace(
+            max_pairs=3, min_product_size=250, opt_product_size=290, max_product_size=320
+        )
+        over_cds = design_insitu(
+            tx, params, scheme="riboprobe-t3", panel=panel,
+            targets=IntervalSet([Interval(300, 500)]),
+        )
+        over_utr = design_insitu(
+            tx, params, scheme="riboprobe-t3", panel=panel,
+            targets=IntervalSet([Interval(849, 1049)]),
+        )
+        assert over_cds.pairs and over_utr.pairs
+        assert over_cds.cross_hyb[over_cds.pairs[0].name].will_cross_hybridise
+        assert not over_utr.cross_hyb[over_utr.pairs[0].name].will_cross_hybridise
+
+    def test_the_antisense_promoter_is_on_the_reverse_primer(self, transcripts):
+        from danioprime.assays.insitu import design_insitu
+
+        tx, panel = transcripts
+        params = get_preset("insitu-probe").replace(
+            max_pairs=1, min_product_size=250, opt_product_size=290, max_product_size=320
+        )
+        design = design_insitu(tx, params, scheme="riboprobe-t3", panel=panel)
+        rev = next(o for o in design.antisense.oligos if o.role == "reverse")
+        assert rev.sequence.startswith("AATTAACCCTCACTAAAGGG")

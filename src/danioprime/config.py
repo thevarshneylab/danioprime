@@ -274,7 +274,7 @@ PRESET_DESCRIPTIONS: dict[str, str] = {
     "qpcr": "RT-qPCR: 70-160 bp, tight Tm window, strict structure limits.",
     "sanger": "Sanger sequencing across an edited site (500-1200 bp).",
     "amplicon-seq": "Short-read amplicon sequencing of an edited locus (180-280 bp).",
-    "insitu-probe": "Long template for riboprobe synthesis (500-1500 bp).",
+    "insitu-probe": "Riboprobe template for in situ (500-1500 bp); see the `insitu` mode.",
 }
 
 

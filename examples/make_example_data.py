@@ -7,6 +7,10 @@ the examples exercise real behaviour rather than a happy path:
 * ``kcnh6a`` and ``kcnh6b`` are a mock ohnolog pair. Their coding exons are 94%
   identical with a block of near-perfect conservation, which is exactly where a
   naive design lands and the reason the pair gets co-amplified.
+* Their 3' UTRs are unrelated, as real ohnolog UTRs largely are: UTR sequence
+  diverges far faster than coding sequence. That matters for in situ probes,
+  where the coding region is often too conserved for any probe to discriminate
+  and the UTR is the only place a specific probe can be placed.
 * The intergenic and intronic sequence diverges freely, so primers placed there
   discriminate easily. The contrast between the two is the point.
 * A SpCas9 protospacer with a real NGG PAM sits in exon 2 of ``kcnh6a``.
@@ -53,7 +57,7 @@ def main() -> None:
     # --- exons shared between the two ohnologs ---------------------------
     exon1 = rand_seq(210)
     exon2 = rand_seq(330)
-    exon3 = rand_seq(260)
+    exon3_cds = rand_seq(260)
     # A 120 bp block of near-perfect conservation inside exon 2: the trap.
     conserved = exon2[100:220]
 
@@ -69,6 +73,15 @@ def main() -> None:
     protospacer = rand_seq(20)
     exon2_a = exon2[:40] + protospacer + "TGG" + exon2[63:]
     assert len(exon2_a) == len(exon2)
+
+    # The last exon carries a 3' UTR. The two genes' UTRs are generated
+    # independently rather than mutated from a common ancestor, which is the
+    # point: a probe over the CDS cannot discriminate these ohnologs, a probe
+    # over the UTR can. Drawn after the protospacer so that adding them did not
+    # shift the coordinates already published in the README and demo.
+    utr3_a = rand_seq(320)
+    utr3_b = rand_seq(320)
+    exon3 = exon3_cds + utr3_a
 
     a_locus = (
         a_upstream + exon1 + a_intron1 + exon2_a + a_intron2 + exon3 + a_downstream
@@ -86,7 +99,7 @@ def main() -> None:
     # restore the conserved block almost exactly (2 substitutions over 120 bp)
     b_conserved = mutate(conserved, 0.017)
     b_exon2 = b_exon2[:100] + b_conserved + b_exon2[220:]
-    b_exon3 = mutate(exon3, 0.06)
+    b_exon3 = mutate(exon3_cds, 0.06) + utr3_b
     b_locus = (
         rand_seq(500) + b_exon1 + rand_seq(820) + b_exon2 + rand_seq(1000) + b_exon3 + rand_seq(500)
     )
@@ -103,13 +116,19 @@ def main() -> None:
     # --- spliced transcripts --------------------------------------------
     a_tx = exon1 + exon2_a + exon3
     b_tx = b_exon1 + b_exon2 + b_exon3
+    cds_end = len(exon1) + len(exon2_a) + len(exon3_cds)
     write_fasta(
         HERE / "kcnh6a_transcript.fa",
-        [("kcnh6a-201", f"spliced transcript, junctions at {len(exon1)} and {len(exon1) + len(exon2_a)}", a_tx)],
+        [(
+            "kcnh6a-201",
+            f"spliced transcript, junctions at {len(exon1)} and {len(exon1) + len(exon2_a)}, "
+            f"3' UTR from {cds_end + 1}",
+            a_tx,
+        )],
     )
     write_fasta(
         HERE / "kcnh6b_transcript.fa",
-        [("kcnh6b-201", "ohnolog transcript: use as the avoid-panel for qPCR", b_tx)],
+        [("kcnh6b-201", "ohnolog transcript: avoid-panel for qPCR and in situ", b_tx)],
     )
 
     # --- GTF for the kcnh6a locus (coordinates within the locus FASTA) ---
@@ -181,6 +200,11 @@ Key coordinates in `kcnh6a_locus.fa` (1-based):
 
 Transcript junctions: {len(exon1)} and {len(exon1) + len(exon2_a)}.
 
+Coding sequence ends at transcript position {cds_end}; the 3' UTR
+({cds_end + 1}-{len(a_tx)}) is unrelated between the two genes. A probe over the
+CDS cannot discriminate the ohnologs; a probe over the UTR can. That is the
+contrast `danioprime insitu` is there to surface.
+
 Nothing here is real zebrafish sequence. The `a`/`b` names are placeholders
 chosen because the ZFIN suffix convention is what the ohnolog logic keys on.
 """
@@ -191,6 +215,7 @@ chosen because the ZFIN suffix convention is what the ohnolog logic keys on.
     print(f"locus lengths: kcnh6a {len(a_locus)}, kcnh6b {len(b_locus)}")
     print(f"transcript junctions: {len(exon1)}, {len(exon1) + len(exon2_a)}")
     print(f"conserved block in transcript: {len(exon1) + 101}-{len(exon1) + 220}")
+    print(f"CDS ends at transcript {cds_end}; divergent 3' UTR {cds_end + 1}-{len(a_tx)}")
 
 
 if __name__ == "__main__":

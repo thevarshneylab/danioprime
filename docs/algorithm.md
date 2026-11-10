@@ -165,6 +165,42 @@ Graded, not asserted:
 
 A primer counts as junction-spanning only with ≥ 4 nt on each side; fewer and it still anneals to the unspliced locus.
 
+### In situ probes
+
+Two constraints that have no analogue elsewhere in the package.
+
+**Promoter orientation.** A promoter on the reverse primer transcribes the antisense strand (the probe); on the forward primer, the sense strand (the control). Different promoters at the two ends make one PCR product serve as template for both. All of T7, T3 and SP6 are available in either orientation.
+
+Promoter sequences are the consensus forms from Thermo Fisher's in vitro transcription guide (MAN0011982), in each of which the final G of the core is the +1 base of the transcript:
+
+| Polymerase | Sequence |
+|---|---|
+| T7 | `TAATACGACTCACTATAGGG` |
+| T3 | `AATTAACCCTCACTAAAGGG` |
+| SP6 | `ATTTAGGTGACACTATAGAA` |
+
+**Probe cross-hybridisation is a different question from primer specificity.** Priming is decided at a 3' end; hybridisation is decided along the whole molecule. The check therefore scans the amplicon, not its ends: exact k-mers seed alignment diagonals against the avoid-panel, and on each diagonal the *longest window whose identity reaches the threshold* is reported. That window is found in linear time by subtracting the threshold from each position and locating the longest subarray with a non-negative sum.
+
+Two defects were found and fixed while building this, both worth recording because they are easy to reintroduce:
+
+- An earlier version took the span between the first and last seed on a diagonal as the starting block without checking it, so two chance 12-mer matches 600 nt apart were reported as a single 600 nt block at 64% identity.
+- The subarray scan was written in floating point. Prefix sums of `0.2` and `-0.8` accumulate error, so two nominally equal sums differ by an ulp and the comparison that should accept the longest window fails. It now uses integers throughout.
+
+#### Threshold calibration
+
+The failure mode to avoid is a chance window: between genuinely homologous but diverged ohnologs, a locally better-conserved patch turns up by luck. Measured over 100 simulated 700 nt backgrounds, the proportion of runs tripped purely by chance:
+
+| identity | min length | 65% background (diverged paralog) | 25% background (unrelated) |
+|---|---|---|---|
+| 0.80 | 50 | 57% | 0% |
+| 0.85 | 50 | 15% | 0% |
+| 0.80 | 100 | 2% | 0% |
+| **0.85** | **100** | **0%** | **0%** |
+
+85% over 100 nt is the first combination quiet against a diverged paralog while still firing on real conservation, and it is the biologically defensible one: 100 nt at 85% identity holds a riboprobe through a standard high-stringency wash, 50 nt at 80% does not reliably. Both are tunable with `--cross-hyb-identity` and `--cross-hyb-length`.
+
+Only ungapped similarity is modelled, so an indel splits one block into two. That understates the risk slightly, which is the safe direction for a check whose job is to warn.
+
 ### dCAPS
 
 The recognition site must straddle the dCAPS primer's 3' end:

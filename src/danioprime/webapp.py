@@ -29,8 +29,14 @@ from .assays.genotyping import (
     design_genotyping,
     locate_protospacer,
 )
+from .assays.insitu import design_insitu
 from .assays.qpcr import design_qpcr
-from .assays.tails import SCHEME_DESCRIPTIONS, TAIL_SCHEMES, reaction_plan
+from .assays.tails import (
+    RIBOPROBE_SCHEMES,
+    SCHEME_DESCRIPTIONS,
+    TAIL_SCHEMES,
+    reaction_plan,
+)
 from .config import PRESET_DESCRIPTIONS, DesignParams, get_preset
 from .design.pipeline import DesignRequest, DesignResult, run_design
 from .design.regions import IntervalSet
@@ -40,7 +46,7 @@ from .sequence import SeqRecord, normalise, parse_fasta
 from .specificity.paralog import ParalogPanel, assess_pair, assess_primer
 from .thermo.nn import SaltConditions
 
-MODES = ("genotype", "qpcr", "dcaps", "design", "check")
+MODES = ("genotype", "qpcr", "dcaps", "insitu", "design", "check")
 
 #: Fields of :class:`DesignParams` the UI is allowed to override directly.
 TUNABLE = (
@@ -438,6 +444,65 @@ def _mode_dcaps(payload: dict[str, Any]) -> dict[str, Any]:
     return payload_out
 
 
+def _mode_insitu(payload: dict[str, Any]) -> dict[str, Any]:
+    template = parse_one_sequence(
+        payload.get("template"), what="transcript", default_name="transcript"
+    )
+    params = build_params(payload)
+    panel = build_panel(payload)
+
+    def specs(key: str) -> IntervalSet:
+        raw = payload.get(key) or []
+        if isinstance(raw, str):
+            raw = [piece.strip() for piece in raw.replace(",", " ").split() if piece.strip()]
+        return IntervalSet.from_specs(raw) if raw else IntervalSet()
+
+    scheme = payload.get("scheme") or "riboprobe-t7"
+    design = design_insitu(
+        template,
+        params,
+        scheme=scheme,
+        panel=panel,
+        targets=specs("targets"),
+        sense_control=not payload.get("no_sense_control"),
+        min_identity=float(payload.get("cross_hyb_identity") or 85.0) / 100.0,
+        min_block=int(payload.get("cross_hyb_length") or 100),
+        name=payload.get("name") or None,
+    )
+
+    out = _package_result(design.result, tails=scheme, extra=design.to_dict())
+    if design.cross_hyb:
+        out["tables"].append(
+            {
+                "title": "Probe cross-hybridisation (whole amplicon, not primer 3' ends)",
+                "columns": ["pair", "cross-hybridises", "longest shared block", "verdict"],
+                "rows": [
+                    [
+                        name,
+                        "YES" if ch.will_cross_hybridise else "no",
+                        (
+                            f"{ch.worst.length} nt @ {100 * ch.worst.identity:.0f}% "
+                            f"({ch.worst.subject})"
+                            if ch.worst
+                            else "none"
+                        ),
+                        ch.verdict(),
+                    ]
+                    for name, ch in design.cross_hyb.items()
+                ],
+            }
+        )
+    if design.sense:
+        out["tables"].append(
+            {
+                "title": "Sense control — order as a separate PCR",
+                "columns": ["oligo", "sequence", "length"],
+                "rows": [[o.name, o.sequence, o.length] for o in design.sense.oligos],
+            }
+        )
+    return out
+
+
 def _mode_design(payload: dict[str, Any]) -> dict[str, Any]:
     template = parse_one_sequence(payload.get("template"), what="template", default_name="template")
     params = build_params(payload)
@@ -618,6 +683,7 @@ _HANDLERS = {
     "genotype": _mode_genotype,
     "qpcr": _mode_qpcr,
     "dcaps": _mode_dcaps,
+    "insitu": _mode_insitu,
     "design": _mode_design,
     "check": _mode_check,
 }
@@ -677,6 +743,10 @@ def ui_metadata() -> dict[str, Any]:
         "tail_schemes": [
             {"name": name, "description": SCHEME_DESCRIPTIONS.get(name, "")}
             for name in sorted(TAIL_SCHEMES)
+        ],
+        "riboprobe_schemes": [
+            {"name": name, "description": SCHEME_DESCRIPTIONS.get(name, "")}
+            for name in sorted(RIBOPROBE_SCHEMES)
         ],
         "nucleases": [
             {"name": name, "description": spec["description"]}

@@ -31,7 +31,14 @@ from danioprime.assays.genotyping import (
     predict_allele_sizes,
 )
 from danioprime.assays.qpcr import design_qpcr, intron_sizes_from_transcript
-from danioprime.assays.tails import TAIL_SCHEMES, apply_scheme, order_sheet, reaction_plan
+from danioprime.assays.tails import (
+    RIBOPROBE_SCHEMES,
+    TAIL_SCHEMES,
+    TAILS,
+    apply_scheme,
+    order_sheet,
+    reaction_plan,
+)
 from danioprime.config import get_preset
 from danioprime.errors import AnnotationError, DesignError
 from danioprime.sequence import SeqRecord, revcomp
@@ -431,11 +438,76 @@ class TestTails:
         plan = reaction_plan(pairs, scheme="fluorescent")
         assert any("Three-primer" in n for n in plan.notes)
 
-    def test_riboprobe_scheme_puts_the_promoter_on_the_reverse_primer(self, pairs):
+    def test_antisense_scheme_puts_the_promoter_on_the_reverse_primer(self, pairs):
         plan = reaction_plan(pairs, scheme="riboprobe-t7")
         reverse = [o for o in plan.oligos if o.role == "reverse"]
-        assert all(o.sequence.startswith("TAATACGACTCACTATAGGG") for o in reverse)
-        assert any("antisense" in n for n in plan.notes)
+        forward = [o for o in plan.oligos if o.role == "forward"]
+        assert all(o.sequence.startswith(TAILS["T7"].seq) for o in reverse)
+        assert not any(o.sequence.startswith(TAILS["T7"].seq) for o in forward)
+        assert any("ANTISENSE" in n for n in plan.notes)
+
+    def test_sense_scheme_puts_the_promoter_on_the_forward_primer(self, pairs):
+        """Orientation is the thing people get backwards, so assert both ways."""
+        plan = reaction_plan(pairs, scheme="riboprobe-t7-sense")
+        forward = [o for o in plan.oligos if o.role == "forward"]
+        reverse = [o for o in plan.oligos if o.role == "reverse"]
+        assert all(o.sequence.startswith(TAILS["T7"].seq) for o in forward)
+        assert not any(o.sequence.startswith(TAILS["T7"].seq) for o in reverse)
+        assert any("SENSE" in n and "control" in n for n in plan.notes)
+
+    @pytest.mark.parametrize("promoter", ["T7", "T3", "SP6"])
+    def test_all_three_polymerases_have_an_antisense_scheme(self, pairs, promoter):
+        plan = reaction_plan(pairs, scheme=f"riboprobe-{promoter.lower()}")
+        reverse = [o for o in plan.oligos if o.role == "reverse"]
+        assert reverse
+        assert all(o.sequence.startswith(TAILS[promoter].seq) for o in reverse)
+
+    @pytest.mark.parametrize("promoter", ["T7", "T3", "SP6"])
+    def test_all_three_polymerases_have_a_sense_scheme(self, pairs, promoter):
+        plan = reaction_plan(pairs, scheme=f"riboprobe-{promoter.lower()}-sense")
+        forward = [o for o in plan.oligos if o.role == "forward"]
+        assert forward
+        assert all(o.sequence.startswith(TAILS[promoter].seq) for o in forward)
+
+    def test_dual_scheme_uses_two_different_promoters(self, pairs):
+        """One PCR product that templates both probes needs distinct promoters."""
+        plan = reaction_plan(pairs, scheme="riboprobe-dual-t7-sp6")
+        fwd = next(o for o in plan.oligos if o.role == "forward")
+        rev = next(o for o in plan.oligos if o.role == "reverse")
+        assert fwd.sequence.startswith(TAILS["SP6"].seq)
+        assert rev.sequence.startswith(TAILS["T7"].seq)
+        assert fwd.tail != rev.tail
+        assert any("one PCR product" in n.lower() or "both probes" in n for n in plan.notes)
+
+    def test_promoter_sequences_match_the_published_consensus(self):
+        """Wrong by one base means wasted oligos and a failed transcription.
+
+        Consensus sequences as published in Thermo Fisher's in vitro
+        transcription guide (MAN0011982); in each the final G of the core is
+        the +1 base of the transcript.
+        """
+        assert TAILS["T7"].seq == "TAATACGACTCACTATAGGG"
+        assert TAILS["T3"].seq == "AATTAACCCTCACTAAAGGG"
+        assert TAILS["SP6"].seq == "ATTTAGGTGACACTATAGAA"
+        for name in ("T7", "T3", "SP6"):
+            assert TAILS[name].is_promoter
+            assert TAILS[name].source
+
+    def test_every_registered_promoter_is_reachable_from_a_scheme(self):
+        """T3 was registered as a tail but had no scheme, so no UI could offer it."""
+        used = {
+            tail
+            for scheme in RIBOPROBE_SCHEMES
+            for tail in TAIL_SCHEMES[scheme].values()
+        }
+        promoters = {n for n, t in TAILS.items() if t.is_promoter}
+        assert promoters <= used, f"promoters with no scheme: {sorted(promoters - used)}"
+
+    def test_riboprobe_notes_mention_cleanup_and_leader(self, pairs):
+        plan = reaction_plan(pairs, scheme="riboprobe-t7")
+        joined = " ".join(plan.notes)
+        assert "5' of the promoter" in joined
+        assert "purif" in joined or "clean" in joined
 
     def test_unknown_scheme_is_rejected(self, pairs):
         with pytest.raises(DesignError, match="unknown tail scheme"):

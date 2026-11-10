@@ -66,7 +66,30 @@ danioprime dcaps \
     --min-product-size 150 --max-product-size 450 \
     --max-assays 2
 
-hr "8. Junction PCRs verifying a knock-in"
+hr "8. In situ probe: dual promoters, and a probe-level specificity check"
+# Note what this shows: the primers discriminate the ohnolog perfectly, yet the
+# PROBE made from them would stain both genes. Priming is decided at a 3' end;
+# hybridisation is decided along the whole molecule.
+danioprime insitu \
+    --template kcnh6a_transcript.fa \
+    --avoid kcnh6b_transcript.fa \
+    --scheme riboprobe-dual-t7-sp6 \
+    --min-product-size 400 --opt-product-size 500 --max-product-size 700 \
+    --show 1
+
+hr "9. The same gene, probed over the divergent 3' UTR instead"
+# Ohnolog coding sequence is usually too conserved for any probe to
+# discriminate. The 3' UTR diverges far faster, and is where a specific probe
+# can actually be placed. CDS ends at transcript position 800.
+danioprime insitu \
+    --template kcnh6a_transcript.fa \
+    --avoid kcnh6b_transcript.fa \
+    --scheme riboprobe-t3 \
+    --target 850-1050 \
+    --min-product-size 250 --opt-product-size 290 --max-product-size 320 \
+    --show 1
+
+hr "10. Junction PCRs verifying a knock-in"
 danioprime junction \
     --template kcnh6a_locus.fa \
     --cassette reporter_cassette.fa \
@@ -75,7 +98,7 @@ danioprime junction \
     --preset genotyping-gel \
     --show 1
 
-hr "9. Machine-readable output"
+hr "11. Machine-readable output"
 danioprime genotype \
     --template kcnh6a_locus.fa \
     --protospacer "$PROTOSPACER" \

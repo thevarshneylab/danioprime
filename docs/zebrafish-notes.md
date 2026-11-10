@@ -113,7 +113,13 @@ Sized for short-read sequencing of an edited locus. Add your platform adapters a
 
 ### `insitu-probe` (500-1500 bp)
 
-Template for riboprobe synthesis, with relaxed structure limits because the product is transcribed rather than amplified efficiently. Use `--tails riboprobe-t7` to put a T7 promoter on the reverse primer, giving an antisense probe; put it on the forward primer for a sense control. **Check the ohnolog here too** — a cross-hybridising probe produces a published expression pattern belonging to two genes.
+Template for riboprobe synthesis, with relaxed structure limits because the product is transcribed rather than amplified efficiently. Use the dedicated `insitu` mode rather than `design`, because two things here differ from every other assay.
+
+**Orientation decides which strand you get.** A promoter on the reverse primer transcribes the antisense strand — the probe. On the forward primer it transcribes the sense strand — the negative control. Backwards, the probe cannot hybridise and the control can, and the result merely looks like a failed experiment. T7, T3 and SP6 are offered in both orientations, and the dual schemes put different promoters at the two ends so one product makes both probes.
+
+**The ohnolog check has to be different here.** Everywhere else, specificity is decided at a primer's 3' end. A riboprobe has no 3' end that matters: it is hundreds of bases of RNA and binds anything similar enough along its length. So a pair whose primers discriminate the ohnolog perfectly can still yield a probe that stains both genes — the primers sit in divergent sequence while the body of the amplicon is conserved. The `insitu` mode scans the amplicon itself and reports the longest block it shares with the panel.
+
+In practice ohnolog coding sequence is often too conserved for *any* probe over the ORF to discriminate. The usual escape is the **3' UTR**, which diverges considerably faster than coding sequence; steer the probe there with `--target`. If no divergent region exists, the honest options are to accept that the probe reports both genes and say so, or to switch to a method with single-base discrimination.
 
 ---
 

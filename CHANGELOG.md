@@ -6,6 +6,39 @@ All notable changes to this project are documented here, following
 
 ## [Unreleased]
 
+### Added — in situ hybridisation
+
+- `insitu` mode (CLI, Python API and browser) for riboprobe templates.
+- **T3 is now reachable.** It was registered as a tail but had no scheme, so no
+  interface could offer it. All of T7, T3 and SP6 now have schemes in both
+  orientations, plus two dual-promoter schemes that put different promoters at
+  each end so one PCR product templates both the antisense probe and its sense
+  control.
+- **Probe-level cross-hybridisation analysis**, which is a different question
+  from primer specificity: priming is decided at a 3' end, hybridisation along
+  the whole molecule. A pair whose primers discriminate the ohnolog perfectly
+  can still yield a probe that stains both genes, and only this check sees it.
+  Thresholds (85% identity over at least 100 nt) are calibrated against chance
+  windows rather than guessed; see `docs/algorithm.md`.
+- The example transcripts now carry independently generated 3' UTRs, as real
+  ohnolog UTRs largely are, so the dataset demonstrates both the problem (a CDS
+  probe cross-hybridises) and the fix (a UTR probe does not).
+
+### Fixed
+
+- **SP6 promoter was two bases short.** It was the 18-mer universal primer
+  (`ATTTAGGTGACACTATAG`) rather than the in vitro transcription consensus
+  (`ATTTAGGTGACACTATAGAA`). T7 and T3 were already correct. All three are now
+  checked against the published consensus by a test, because being wrong by one
+  base means wasted oligos and a failed transcription.
+- Two defects in the conserved-block finder, both found by testing rather than
+  by review: it reported the unchecked span between two chance seeds on a
+  diagonal (600 nt at 64% identity was presented as one block), and its
+  longest-window scan was in floating point, where prefix sums that are
+  nominally equal differ by an ulp and the longest valid window is silently
+  lost. Now integer arithmetic, verified against brute force on 2,000 random
+  cases.
+
 ## [0.1.0] — initial release
 
 First working version. Nothing in it has been validated against wet-lab

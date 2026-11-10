@@ -199,3 +199,19 @@ class TestPublishedSite:
     def test_only_one_wheel_is_published(self):
         wheels = sorted(p.name for p in DOCS.glob("danioprime-*.whl"))
         assert wheels == [WHEEL.name], wheels
+
+
+class TestSmokeTestCoverage:
+    """The Pyodide smoke test must not fall behind the modes that exist.
+
+    It gained `insitu` only after the mode shipped; this stops that recurring.
+    """
+
+    def test_every_mode_is_exercised_by_smoke_mjs(self):
+        source = (ROOT / "web" / "smoke.mjs").read_text()
+        covered = set(re.findall(r'name:\s*"([a-z]+)"', source))
+        assert set(MODES) <= covered, f"not smoke-tested: {sorted(set(MODES) - covered)}"
+
+    def test_smoke_test_checks_semantics_not_just_absence_of_errors(self):
+        source = (ROOT / "web" / "smoke.mjs").read_text()
+        assert source.count("expect:") >= len(MODES)

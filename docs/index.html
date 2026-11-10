@@ -239,6 +239,34 @@ footer p { margin: 5px 0; max-width: 80ch; }
       <button class="go" data-run="dcaps">Find dCAPS assays</button>
     </section>
 
+    <section class="pane" id="pane-insitu" role="tabpanel" hidden>
+      <p class="mode-note">A riboprobe template with an RNA-polymerase promoter. Probe cross-hybridisation is checked across the <em>whole amplicon</em> — a pair whose primers discriminate the ohnolog can still yield a probe that stains both genes.</p>
+      <label for="i-template">Transcript or cDNA</label>
+      <textarea id="i-template" rows="5" placeholder="&gt;kcnh6a-201&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="i-file" accept=".fa,.fasta,.txt"><button class="link" data-demo="insitu">load example</button></div>
+
+      <label for="i-avoid">Avoid-panel <span class="hint">— the ohnolog transcript; this is where it matters most</span></label>
+      <textarea id="i-avoid" rows="3" placeholder="&gt;kcnh6b-201&#10;ACGT…"></textarea>
+      <div class="filerow"><input type="file" id="i-avoidfile" accept=".fa,.fasta,.txt"></div>
+
+      <label for="i-scheme">Promoter arrangement</label>
+      <select id="i-scheme" data-riboprobe></select>
+      <p class="mode-note" style="margin:6px 0 0" id="i-scheme-note"></p>
+
+      <div class="check"><input type="checkbox" id="i-nosense"><label for="i-nosense" style="margin:0;font-weight:400">Skip the sense control primer set</label></div>
+
+      <label for="i-targets">Confine the probe to <span class="hint">e.g. 1-400 — useful for steering into a divergent 3′ UTR</span></label>
+      <input type="text" id="i-targets" placeholder="" spellcheck="false">
+
+      <div class="row" style="margin-top:12px">
+        <div><label for="i-preset">Preset</label><select id="i-preset" data-preset data-default="insitu-probe"></select></div>
+        <div><label for="i-xid">Cross-hyb identity %</label><input type="number" id="i-xid" value="85" min="50" max="100"></div>
+      </div>
+      <label for="i-xlen">Shortest shared block treated as a risk (nt)</label>
+      <input type="number" id="i-xlen" value="100" min="20">
+      <button class="go" data-run="insitu">Design probe template</button>
+    </section>
+
     <section class="pane" id="pane-design" role="tabpanel" hidden>
       <p class="mode-note">General-purpose pair design on any template, with optional regions the amplicon must span or primers must avoid.</p>
       <label for="x-template">Template</label>
@@ -287,6 +315,7 @@ footer p { margin: 5px 0; max-width: 80ch; }
         <li><strong>Genotype</strong> — bracket a CRISPR lesion without touching it</li>
         <li><strong>qPCR</strong> — span an exon junction; graded gDNA protection</li>
         <li><strong>dCAPS</strong> — turn a 1 bp difference into a band difference</li>
+        <li><strong>In situ</strong> — riboprobe template with a T7, T3 or SP6 promoter, checked for probe-level cross-hybridisation</li>
         <li><strong>Design</strong> — general-purpose, with target and exclude regions</li>
         <li><strong>Check</strong> — grade primers you already ordered</li>
       </ul>
@@ -369,6 +398,17 @@ function buildForms() {
       .map((t) => `<option value="${esc(t.name)}"${t.name === "none" ? " selected" : ""}>${esc(t.name)}${t.name === "none" ? "" : " — " + esc(t.description)}</option>`)
       .join("");
   }
+  const ribo = $("i-scheme");
+  ribo.innerHTML = meta.riboprobe_schemes
+    .map((s) => `<option value="${esc(s.name)}"${s.name === "riboprobe-t7" ? " selected" : ""}>${esc(s.name.replace("riboprobe-", ""))}</option>`)
+    .join("");
+  const riboNote = () => {
+    const hit = meta.riboprobe_schemes.find((s) => s.name === ribo.value);
+    $("i-scheme-note").textContent = hit ? hit.description : "";
+  };
+  ribo.addEventListener("change", riboNote);
+  riboNote();
+
   $("g-nuclease").innerHTML = meta.nucleases
     .map((n) => `<option value="${esc(n.name)}"${n.name === "SpCas9" ? " selected" : ""}>${esc(n.name)}</option>`)
     .join("");
@@ -397,7 +437,7 @@ function overrides() {
 const numbers = (s) =>
   String(s || "").split(/[,\s]+/).filter(Boolean).map((n) => parseInt(n, 10)).filter((n) => !Number.isNaN(n));
 
-const FIELD_PREFIX = { genotype: "g", qpcr: "q", dcaps: "d", design: "x", check: "c" };
+const FIELD_PREFIX = { genotype: "g", qpcr: "q", dcaps: "d", insitu: "i", design: "x", check: "c" };
 
 function payloadFor(mode) {
   const common = {
@@ -422,6 +462,11 @@ function payloadFor(mode) {
     return { ...common, template: $("d-template").value, variant_position: $("d-pos").value,
       variant_base: $("d-base").value, cut_allele: $("d-allele").value,
       max_introduced_mismatches: $("d-mm").value };
+  if (mode === "insitu")
+    return { ...common, template: $("i-template").value, avoid: $("i-avoid").value,
+      scheme: $("i-scheme").value, no_sense_control: $("i-nosense").checked,
+      targets: $("i-targets").value, cross_hyb_identity: $("i-xid").value,
+      cross_hyb_length: $("i-xlen").value };
   if (mode === "design")
     return { ...common, template: $("x-template").value, avoid: $("x-avoid").value,
       targets: $("x-targets").value, excludes: $("x-excludes").value, tails: $("x-tails").value };
@@ -589,6 +634,14 @@ async function loadDemo(mode, btn) {
         for (const [k, v] of [["min_product_size", 150], ["max_product_size", 450]])
           $(`adv-${k}`).value = v;
       }
+    } else if (mode === "insitu") {
+      const [a, b] = await Promise.all([fetchExample("kcnh6a_transcript.fa"), fetchExample("kcnh6b_transcript.fa")]);
+      $("i-template").value = a; $("i-avoid").value = b;
+      $("i-scheme").value = "riboprobe-dual-t7-sp6";
+      $("i-scheme").dispatchEvent(new Event("change"));
+      $("i-preset").value = "insitu-probe";
+      for (const [k, v] of [["min_product_size", 400], ["opt_product_size", 500], ["max_product_size", 700]])
+        $(`adv-${k}`).value = v;
     } else if (mode === "qpcr") {
       const [a, b] = await Promise.all([fetchExample("kcnh6a_transcript.fa"), fetchExample("kcnh6b_transcript.fa")]);
       $("q-template").value = a; $("q-avoid").value = b; $("q-junctions").value = "210, 540";
@@ -604,7 +657,7 @@ async function loadDemo(mode, btn) {
   }
 }
 
-for (const [file, target] of [["g-file", "g-template"], ["g-avoidfile", "g-avoid"], ["q-file", "q-template"],
+for (const [file, target] of [["i-file", "i-template"], ["g-file", "g-template"], ["g-avoidfile", "g-avoid"], ["q-file", "q-template"],
                               ["d-file", "d-template"], ["x-file", "x-template"], ["c-avoidfile", "c-avoid"]]) {
   $(file)?.addEventListener("change", async (ev) => {
     const f = ev.target.files?.[0];
@@ -612,7 +665,7 @@ for (const [file, target] of [["g-file", "g-template"], ["g-avoidfile", "g-avoid
   });
 }
 
-const MODE_LIST = [["genotype", "Genotype"], ["qpcr", "qPCR"], ["dcaps", "dCAPS"], ["design", "Design"], ["check", "Check"]];
+const MODE_LIST = [["genotype", "Genotype"], ["qpcr", "qPCR"], ["dcaps", "dCAPS"], ["insitu", "In situ"], ["design", "Design"], ["check", "Check"]];
 $("tabs").innerHTML = MODE_LIST.map(([k, lbl], i) =>
   `<button role="tab" data-mode="${k}" aria-selected="${i === 0}">${lbl}</button>`).join("");
 document.querySelectorAll("button.go").forEach((b) => (b.disabled = true));

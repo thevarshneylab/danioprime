@@ -299,6 +299,90 @@ class TestDcapsMode:
         assert data["assays"]
 
 
+class TestInSituMode:
+    @pytest.fixture
+    def transcripts(self):
+        from helpers import make_seq, mutate
+
+        left, mid, right = make_seq(700, 11), make_seq(900, 22), make_seq(700, 33)
+        target = left + mid + right
+        paralog = mutate(left, 0.35, 1) + mutate(mid, 0.04, 2) + mutate(right, 0.35, 3)
+        return ">kcnh6a\n" + target, ">kcnh6b\n" + paralog
+
+    def _payload(self, transcripts, **kw):
+        a, b = transcripts
+        base = {
+            "mode": "insitu", "template": a, "avoid": b, "preset": "insitu-probe",
+            "overrides": {
+                "min_product_size": "450", "opt_product_size": "550",
+                "max_product_size": "650", "max_pairs": "3",
+            },
+        }
+        base.update(kw)
+        return base
+
+    def test_default_scheme_designs_an_antisense_probe(self, transcripts):
+        r = run(self._payload(transcripts))
+        assert r["ok"]
+        assert r["pairs"]
+        assert r["pairs"][0]["reverse"].startswith("TAATACGACTCACTATAGGG")
+
+    @pytest.mark.parametrize(
+        "scheme,tail",
+        [
+            ("riboprobe-t7", "TAATACGACTCACTATAGGG"),
+            ("riboprobe-t3", "AATTAACCCTCACTAAAGGG"),
+            ("riboprobe-sp6", "ATTTAGGTGACACTATAGAA"),
+        ],
+    )
+    def test_all_three_polymerases_are_reachable(self, transcripts, scheme, tail):
+        r = run(self._payload(transcripts, scheme=scheme))
+        assert r["ok"], r.get("error")
+        assert r["pairs"][0]["reverse"].startswith(tail)
+
+    def test_sense_schemes_tail_the_forward_primer(self, transcripts):
+        r = run(self._payload(transcripts, scheme="riboprobe-t3-sense"))
+        assert r["ok"]
+        assert r["pairs"][0]["forward"].startswith("AATTAACCCTCACTAAAGGG")
+        assert not r["pairs"][0]["reverse"].startswith("AATTAACCCTCACTAAAGGG")
+
+    def test_dual_scheme_tails_both_ends_differently(self, transcripts):
+        r = run(self._payload(transcripts, scheme="riboprobe-dual-t7-sp6"))
+        assert r["ok"]
+        assert r["pairs"][0]["forward"].startswith("ATTTAGGTGACACTATAGAA")
+        assert r["pairs"][0]["reverse"].startswith("TAATACGACTCACTATAGGG")
+
+    def test_cross_hybridisation_table_is_returned(self, transcripts):
+        r = run(self._payload(transcripts, targets="900-1100"))
+        assert r["ok"]
+        table = next(t for t in r["tables"] if "cross-hybridisation" in t["title"].lower())
+        assert any(row[1] == "YES" for row in table["rows"])
+
+    def test_sense_control_table_is_returned(self, transcripts):
+        r = run(self._payload(transcripts, scheme="riboprobe-t7"))
+        assert any("Sense control" in t["title"] for t in r["tables"])
+
+    def test_sense_control_can_be_suppressed(self, transcripts):
+        r = run(self._payload(transcripts, scheme="riboprobe-t7", no_sense_control=True))
+        assert not any("Sense control" in t["title"] for t in r["tables"])
+
+    def test_a_non_promoter_scheme_is_refused_readably(self, transcripts):
+        r = run(self._payload(transcripts, scheme="fluorescent"))
+        assert not r["ok"]
+        assert "promoter" in r["error"]
+
+    def test_thresholds_are_passed_through(self, transcripts):
+        strict = run(self._payload(transcripts, cross_hyb_identity="99", targets="900-1100"))
+        lenient = run(self._payload(transcripts, cross_hyb_identity="60", cross_hyb_length="20",
+                                    targets="900-1100"))
+        assert strict["ok"] and lenient["ok"]
+        strict_t = next(t for t in strict["tables"] if "cross-hyb" in t["title"].lower())
+        lenient_t = next(t for t in lenient["tables"] if "cross-hyb" in t["title"].lower())
+        assert sum(r[1] == "YES" for r in lenient_t["rows"]) >= sum(
+            r[1] == "YES" for r in strict_t["rows"]
+        )
+
+
 class TestDesignMode:
     def test_basic(self, locus_text):
         r = run({"mode": "design", "template": locus_text, "preset": "genotyping-gel"})
@@ -432,6 +516,12 @@ class TestContract:
 
 
 class TestUiMetadata:
+    def test_riboprobe_schemes_are_exposed(self):
+        meta = ui_metadata()
+        names = {s["name"] for s in meta["riboprobe_schemes"]}
+        assert {"riboprobe-t7", "riboprobe-t3", "riboprobe-sp6"} <= names
+        assert all(s["description"] for s in meta["riboprobe_schemes"])
+
     def test_shape(self):
         meta = ui_metadata()
         assert meta["version"]

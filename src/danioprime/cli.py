@@ -37,8 +37,14 @@ from .assays.genotyping import (
     design_junction_pcr,
     locate_protospacer,
 )
+from .assays.insitu import design_insitu
 from .assays.qpcr import design_qpcr
-from .assays.tails import SCHEME_DESCRIPTIONS, TAIL_SCHEMES, reaction_plan
+from .assays.tails import (
+    RIBOPROBE_SCHEMES,
+    SCHEME_DESCRIPTIONS,
+    TAIL_SCHEMES,
+    reaction_plan,
+)
 from .config import PRESET_DESCRIPTIONS, DesignParams, get_preset
 from .design.pipeline import DesignRequest, DesignResult, run_design
 from .design.regions import IntervalSet, parse_interval
@@ -703,6 +709,68 @@ def cmd_junction(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_insitu(args: argparse.Namespace) -> int:
+    params = resolve_params(args)
+    if not getattr(args, "preset", None) and not getattr(args, "params", None):
+        params = get_preset("insitu-probe").replace(
+            **{
+                k: v
+                for k, v in ((f, getattr(args, f, None)) for f in _PARAM_FLAGS)
+                if v is not None
+            }
+        )
+        params.validate()
+    template, offset = resolve_template(args)
+    panel = resolve_panel(args)
+    variants, _ = resolve_variants(args, offset)
+    targets = IntervalSet.from_specs(args.target) if args.target else IntervalSet()
+
+    design = design_insitu(
+        template,
+        params,
+        scheme=args.scheme,
+        panel=panel,
+        variants=variants,
+        targets=targets,
+        sense_control=not args.no_sense_control,
+        min_identity=args.cross_hyb_identity / 100.0,
+        min_block=args.cross_hyb_length,
+        name=args.name,
+    )
+
+    sections: list[tuple[str, Sequence[str]]] = []
+    if design.cross_hyb:
+        rows = [
+            {
+                "pair": name,
+                "cross-hybridises": "YES" if ch.will_cross_hybridise else "no",
+                "longest shared block": (
+                    f"{ch.worst.length} nt @ {100 * ch.worst.identity:.0f}% "
+                    f"({ch.worst.subject})"
+                    if ch.worst
+                    else "none"
+                ),
+            }
+            for name, ch in design.cross_hyb.items()
+        ]
+        sections.append(
+            (
+                "Probe cross-hybridisation (whole-amplicon, not primer 3' ends):",
+                summarise_iterable(
+                    rows, ("pair", "cross-hybridises", "longest shared block")
+                ).splitlines(),
+            )
+        )
+    if design.sense:
+        lines = [f"{o.name}: {o.sequence}" for o in design.sense.oligos]
+        sections.append(("Sense control — order these as a second PCR:", lines))
+
+    # The antisense scheme is already attached to the reported pairs.
+    args.tails = design.scheme
+    write_outputs(design.result, args, offset=offset, extra=design.to_dict(), extra_sections=sections)
+    return 0 if design.pairs else 1
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     params = resolve_params(args)
     panel = resolve_panel(args)
@@ -1023,6 +1091,47 @@ def build_parser() -> argparse.ArgumentParser:
     _add_variant_args(p)
     _add_output_args(p)
     p.set_defaults(func=cmd_junction)
+
+    # --- insitu -----------------------------------------------------------
+    p = sub.add_parser(
+        "insitu", help="riboprobe template for in situ hybridisation (T7/T3/SP6)"
+    )
+    _add_template_args(p)
+    g = p.add_argument_group("probe")
+    g.add_argument(
+        "--scheme",
+        choices=sorted(RIBOPROBE_SCHEMES),
+        default="riboprobe-t7",
+        help="promoter arrangement. A promoter on the reverse primer transcribes the "
+        "antisense probe; on the forward primer, the sense control. A dual scheme "
+        "puts different promoters at each end so one product makes both.",
+    )
+    g.add_argument(
+        "--no-sense-control",
+        action="store_true",
+        help="do not emit a second primer set for the sense control",
+    )
+    g.add_argument(
+        "--target", action="append", default=[],
+        help="confine the probe to this region (repeatable); useful for steering it "
+        "into a divergent stretch such as the 3' UTR",
+    )
+    g.add_argument(
+        "--cross-hyb-identity", type=float, default=85.0,
+        help="percent identity at which a shared block is treated as able to "
+        "cross-hybridise (default 85; calibrated so a diverged paralog does not "
+        "trip it by chance)",
+    )
+    g.add_argument(
+        "--cross-hyb-length", type=int, default=100,
+        help="shortest shared block considered a cross-hybridisation risk (default 100)",
+    )
+    p.add_argument("--name", help="prefix for pair names")
+    _add_param_args(p)
+    _add_specificity_args(p)
+    _add_variant_args(p)
+    _add_output_args(p)
+    p.set_defaults(func=cmd_insitu)
 
     # --- check ------------------------------------------------------------
     p = sub.add_parser("check", help="evaluate primers you already have")

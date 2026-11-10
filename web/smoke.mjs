@@ -78,6 +78,29 @@ const CASES = [
     expect: (r) => (r.tables?.[0]?.rows?.length ? null : "no dCAPS assays"),
   },
   {
+    name: "insitu",
+    payload: () => ({
+      mode: "insitu", preset: "insitu-probe",
+      overrides: { min_product_size: "400", opt_product_size: "500",
+                   max_product_size: "700", max_pairs: "2" },
+      template: read("kcnh6a_transcript.fa"), avoid: read("kcnh6b_transcript.fa"),
+      scheme: "riboprobe-dual-t7-sp6",
+    }),
+    expect: (r) => {
+      if (!r.pairs.length) return "no probe templates";
+      // Dual promoters: different RNA polymerase sites at each end.
+      if (!r.pairs[0].forward.startsWith("ATTTAGGTGACACTATAGAA")) return "no SP6 on the forward primer";
+      if (!r.pairs[0].reverse.startsWith("TAATACGACTCACTATAGGG")) return "no T7 on the reverse primer";
+      // The example ohnologs are ~94% identical in exons, so a probe over them
+      // must be flagged even though the primers themselves discriminate.
+      const tbl = r.tables.find((t) => /cross-hybrid/i.test(t.title));
+      if (!tbl) return "no cross-hybridisation table";
+      if (!tbl.rows.some((row) => row[1] === "YES"))
+        return "failed to flag a probe that overlaps the conserved ohnolog block";
+      return null;
+    },
+  },
+  {
     name: "design",
     payload: () => ({
       mode: "design", preset: "default", overrides: { max_pairs: "2" },
