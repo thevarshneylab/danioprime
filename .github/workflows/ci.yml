@@ -46,6 +46,12 @@ jobs:
       - name: Test
         run: pytest -q --cov=danioprime --cov-report=term-missing
 
+      - name: The pure-Python tabix reader agrees with htslib
+        # pysam has no Windows wheels, so these comparisons skip there; this
+        # step makes the agreement visible rather than buried in the suite.
+        if: runner.os != 'Windows'
+        run: pytest -q tests/test_tabix.py tests/test_variant_sources.py
+
       - name: Example data is reproducible
         shell: bash
         run: |

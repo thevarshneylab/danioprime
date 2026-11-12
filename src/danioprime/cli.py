@@ -63,6 +63,8 @@ from .specificity.external import available_aligners
 from .specificity.paralog import ParalogPanel, assess_pair, assess_primer
 from .thermo.backend import BACKEND_NAMES, primer3_available
 from .thermo.nn import SaltConditions
+from .variants.remote import clear_index_cache, describe_sources, fetch_region
+from .variants.sources import VARIANT_SOURCES
 from .variants.vcf import load_mask, summarise
 
 
@@ -164,7 +166,37 @@ def _add_specificity_args(p: argparse.ArgumentParser) -> None:
 
 def _add_variant_args(p: argparse.ArgumentParser) -> None:
     g = p.add_argument_group("strain variants")
-    g.add_argument("--variants", help="VCF or BED of known variants to avoid")
+    g.add_argument("--variants", help="local VCF or BED of known variants to avoid")
+    g.add_argument(
+        "--variant-source",
+        choices=sorted(VARIANT_SOURCES),
+        help="published variant set to query by region instead of a local file "
+        "(see `danioprime sources`). Only the locus is transferred, not the "
+        "whole dataset.",
+    )
+    g.add_argument(
+        "--variants-url",
+        metavar="URL",
+        help="any bgzip-compressed, tabix-indexed VCF or BED, local or over https; "
+        "its index is assumed to be the same path plus '.tbi'",
+    )
+    g.add_argument(
+        "--assembly",
+        help="assembly your template coordinates are on (danRer11/GRCz11, "
+        "GRCz12tu, ...). Required with --variant-source: a mismatch is refused, "
+        "because GRCz11 and GRCz12 coordinates are not transferable.",
+    )
+    g.add_argument(
+        "--allow-assembly-mismatch",
+        action="store_true",
+        help="apply a variant set from another assembly anyway. Only correct if "
+        "you have already lifted the coordinates over yourself.",
+    )
+    g.add_argument(
+        "--no-index-cache",
+        action="store_true",
+        help="re-download the tabix index instead of reusing the cached copy",
+    )
     g.add_argument("--variant-chrom", help="restrict VCF records to this contig")
     g.add_argument(
         "--strain",
@@ -305,6 +337,48 @@ def resolve_panel(args: argparse.Namespace) -> ParalogPanel | None:
     )
 
 
+def resolve_remote_variants(
+    args: argparse.Namespace, offset: int, template_length: int
+) -> Any:
+    """Query a published variant resource for the template's own interval."""
+    source = getattr(args, "variant_source", None)
+    url = getattr(args, "variants_url", None)
+    if not source and not url:
+        return None
+
+    chrom = getattr(args, "variant_chrom", None)
+    if not chrom and getattr(args, "region", None):
+        parsed, _ = parse_interval(args.region)
+        chrom = parsed
+    if not chrom:
+        raise DanioPrimeError(
+            "a remote variant source needs to know which contig your template "
+            "came from. Either use --region chr5:START-END with --reference, or "
+            "pass --variant-chrom together with --template-offset."
+        )
+    if offset == 0 and not getattr(args, "region", None):
+        sys.stderr.write(
+            "note: --template-offset is 0, so the template is assumed to start at "
+            f"the first base of {chrom}. If it is a slice, pass its genomic start "
+            "or the wrong variants will be fetched.\n"
+        )
+
+    return fetch_region(
+        chrom,
+        offset,
+        offset + template_length,
+        source=source if source else None,
+        data_location=url,
+        template_assembly=getattr(args, "assembly", None),
+        samples=getattr(args, "strain", None) or None,
+        heterozygous_only=getattr(args, "heterozygous_only", False),
+        pad=getattr(args, "variant_pad", 0),
+        offset=offset,
+        allow_assembly_mismatch=getattr(args, "allow_assembly_mismatch", False),
+        cache_index=not getattr(args, "no_index_cache", False),
+    )
+
+
 def resolve_variants(args: argparse.Namespace, offset: int) -> tuple[IntervalSet, list[Any]]:
     """Load the variant mask, shifted into template coordinates."""
     path = getattr(args, "variants", None)
@@ -319,6 +393,45 @@ def resolve_variants(args: argparse.Namespace, offset: int) -> tuple[IntervalSet
         pad=getattr(args, "variant_pad", 0),
     )
     return mask, variants
+
+
+def resolve_all_variants(
+    args: argparse.Namespace, offset: int, template_length: int
+) -> tuple[IntervalSet, list[Any], Any]:
+    """Local file and remote source combined into one mask.
+
+    Both may be given: a published strain set plus a lab's own calls is a
+    reasonable thing to want.
+    """
+    mask, local = resolve_variants(args, offset)
+    remote = resolve_remote_variants(args, offset, template_length)
+    if remote is not None:
+        mask = mask.union(remote.mask)
+        local = [*local, *remote.variants]
+        sys.stderr.write(f"note: {remote.summary()}\n")
+        for note in remote.notes:
+            sys.stderr.write(f"warning: {note}\n")
+    return mask, local, remote
+
+
+def variant_sections(
+    variant_list: list[Any], remote: Any
+) -> list[tuple[str, Sequence[str]]]:
+    """Report lines describing what was masked and where it came from."""
+    sections: list[tuple[str, Sequence[str]]] = []
+    if variant_list:
+        lines = [f"{kind}: {count}" for kind, count in summarise(variant_list).items()]
+        if remote is not None:
+            assembly = (
+                remote.assembly
+                if remote.assembly_verified
+                else f"{remote.assembly} (unverified)"
+            )
+            lines.append(f"source: {remote.source_name} ({assembly})")
+            if remote.citation:
+                lines.append(f"cite: {remote.citation}")
+        sections.append(("Variant mask:", lines))
+    return sections
 
 
 def softmask_for(record: SeqRecord, args: argparse.Namespace) -> IntervalSet:
@@ -390,7 +503,7 @@ def cmd_design(args: argparse.Namespace) -> int:
     params = resolve_params(args)
     template, offset = resolve_template(args)
     panel = resolve_panel(args)
-    variants, variant_list = resolve_variants(args, offset)
+    variants, variant_list, remote = resolve_all_variants(args, offset, len(template.seq))
 
     targets = IntervalSet.from_specs(args.target) if args.target else IntervalSet()
     excluded = IntervalSet.from_specs(args.exclude) if args.exclude else IntervalSet()
@@ -411,10 +524,9 @@ def cmd_design(args: argparse.Namespace) -> int:
         context={"assay": "generic", "template_offset": offset},
     )
     result = run_design(request)
-    sections: list[tuple[str, Sequence[str]]] = []
-    if variant_list:
-        sections.append(("Variant mask:", [f"{k}: {v}" for k, v in summarise(variant_list).items()]))
-    write_outputs(result, args, offset=offset, extra_sections=sections)
+    write_outputs(
+        result, args, offset=offset, extra_sections=variant_sections(variant_list, remote)
+    )
     return 0 if result.pairs else 1
 
 
@@ -422,7 +534,7 @@ def cmd_genotype(args: argparse.Namespace) -> int:
     params = resolve_params(args)
     template, offset = resolve_template(args)
     panel = resolve_panel(args)
-    variants, variant_list = resolve_variants(args, offset)
+    variants, variant_list, remote = resolve_all_variants(args, offset, len(template.seq))
 
     if args.protospacer:
         sites = locate_protospacer(
@@ -473,8 +585,7 @@ def cmd_genotype(args: argparse.Namespace) -> int:
             ("allele", "size", "gel-resolvable"),
         )
         sections.append(("Predicted allele sizes (best pair):", table.splitlines()))
-    if variant_list:
-        sections.append(("Variant mask:", [f"{k}: {v}" for k, v in summarise(variant_list).items()]))
+    sections.extend(variant_sections(variant_list, remote))
     write_outputs(
         design.result, args, offset=offset, extra=design.to_dict(), extra_sections=sections
     )
@@ -529,7 +640,7 @@ def cmd_qpcr(args: argparse.Namespace) -> int:
                 "against ZFIN first -- the suffix is a convention, not an orthology call.\n"
             )
 
-    variants, _ = resolve_variants(args, offset)
+    variants, _variant_list, _remote = resolve_all_variants(args, offset, len(template.seq))
     design = design_qpcr(
         template,
         params,
@@ -668,7 +779,7 @@ def cmd_junction(args: argparse.Namespace) -> int:
     template, offset = resolve_template(args)
     cassette = load_sequence(args.cassette)
     panel = resolve_panel(args)
-    variants, _ = resolve_variants(args, offset)
+    variants, _variant_list, _remote = resolve_all_variants(args, offset, len(template.seq))
 
     designs = design_junction_pcr(
         template,
@@ -723,7 +834,7 @@ def cmd_insitu(args: argparse.Namespace) -> int:
         params.validate()
     template, offset = resolve_template(args)
     panel = resolve_panel(args)
-    variants, _ = resolve_variants(args, offset)
+    variants, _variant_list, _remote = resolve_all_variants(args, offset, len(template.seq))
     targets = IntervalSet.from_specs(args.target) if args.target else IntervalSet()
 
     design = design_insitu(
@@ -900,6 +1011,42 @@ def cmd_check(args: argparse.Namespace) -> int:
             else:
                 lines.append("No product predicted on the avoid-panel.")
 
+    emit("\n".join(lines), args.out)
+    return 0
+
+
+def cmd_sources(args: argparse.Namespace) -> int:
+    if getattr(args, "clear_cache", False):
+        removed = clear_index_cache()
+        emit(f"removed {removed} cached index file(s)", args.out)
+        return 0
+
+    rows = describe_sources()
+    lines: list[str] = ["Published variant resources that can be queried by region:", ""]
+    for row in rows:
+        lines.append(f"  {row['key']}  —  {row['name']}  [{row['assembly']}, {row['kind']}]")
+        lines.append(f"      {row['description']}")
+        lines.append(f"      data:  {row['data_url']}")
+        lines.append(f"      page:  {row['homepage']}")
+        lines.append(f"      hub:   {row['track_hub']}  (attach in the UCSC browser)")
+        lines.append(f"      cite:  {row['citation']}")
+        lines.append("")
+    lines += [
+        "Only the queried locus is transferred, via the tabix index: about 66 kB",
+        "per locus regardless of how large the dataset is. The index is cached.",
+        "",
+        "Every source here is on danRer11 (GRCz11). ZFIN now uses GRCz12tu, whose",
+        "coordinates are NOT transferable. Declare your template's assembly with",
+        "--assembly; a mismatch is refused rather than silently masking the wrong",
+        "bases. Example:",
+        "",
+        "  danioprime genotype --region chr5:1,000,000-1,004,000 \\",
+        "      --reference danRer11.fa --assembly danRer11 \\",
+        "      --variant-source nhgri1 --strain NHGRI1 --heterozygous-only",
+        "",
+        "--variants-url takes any bgzip+tabix VCF or BED, so a source missing from",
+        "this list is never a blocker.",
+    ]
     emit("\n".join(lines), args.out)
     return 0
 
@@ -1144,6 +1291,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_check)
 
     # --- informational ----------------------------------------------------
+    p = sub.add_parser(
+        "sources", help="list published variant resources that can be queried by region"
+    )
+    p.add_argument(
+        "--clear-cache", action="store_true", help="delete cached tabix indexes"
+    )
+    p.add_argument("--out", "-o")
+    p.set_defaults(func=cmd_sources)
+
     p = sub.add_parser("presets", help="list design presets")
     p.add_argument("--out", "-o")
     p.set_defaults(func=cmd_presets)

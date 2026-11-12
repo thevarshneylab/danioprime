@@ -6,6 +6,32 @@ All notable changes to this project are documented here, following
 
 ## [Unreleased]
 
+### Added — published variant sets, queried by region
+
+- `--variant-source nhgri1` reads the **NHGRI-1** zebrafish variant set
+  (Burgess lab, NHGRI; LaFave et al. 2014) over the network, and
+  `--variants-url` accepts any bgzip-compressed, tabix-indexed VCF or BED.
+  `danioprime sources` lists what is available with citations and the
+  `ZebrafishGenomics` UCSC track hub URL.
+- Pure-Python **BGZF and tabix** readers, so a 214 MB dataset can be queried
+  for one locus at a cost of about 66 kB that does not grow with the file. No
+  compiled dependency, which keeps the browser build working. Validated against
+  htslib: identical answers to pysam over hundreds of random regions, including
+  indels at region boundaries, locally and over HTTP range requests.
+- Each chunk is fetched in a single ranged read rather than one request per
+  block, with a bounded one-block tail over-read. Tabix indexes are cached on
+  disk between runs.
+- An **assembly guard**. Published zebrafish variant sets are on danRer11
+  (GRCz11) while ZFIN has moved to GRCz12tu, and the coordinates differ by tens
+  to hundreds of kilobases. A declared mismatch is *refused*, because masking
+  the wrong bases while reporting that known variants were avoided is worse
+  than not checking; `--allow-assembly-mismatch` exists for coordinates already
+  lifted over. An ad-hoc URL has no readable assembly, so it is reported as
+  unverified rather than echoing back the declaration.
+- `--strain` and `--heterozygous-only` apply to remote sources as they already
+  did to local files, so a position fixed non-reference in the line is not
+  masked.
+
 ### Added — in situ hybridisation
 
 - `insitu` mode (CLI, Python API and browser) for riboprobe templates.

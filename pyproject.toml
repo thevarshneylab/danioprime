@@ -26,7 +26,7 @@ dependencies = []
 
 [project.optional-dependencies]
 primer3 = ["primer3-py>=2.0"]
-dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.5"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.5", "pysam>=0.22; sys_platform != 'win32'"]
 
 [project.urls]
 Homepage = "https://github.com/thevarshneylab/danioprime"

@@ -221,7 +221,59 @@ Required mismatches are then the site positions inside the primer that differ fr
 
 ---
 
-## 6. Complexity and runtime
+## 6. Reading published variant sets by region
+
+A strain-variant resource is only usable during design if a locus can be read
+without downloading the dataset. The NHGRI-1 zebrafish VCF is 214 MB; a design
+needs a few kilobases of it.
+
+### BGZF and tabix, in pure Python
+
+A `bgzip`-compressed file is a sequence of independently inflatable gzip
+members, each holding at most 64 KiB and recording its own compressed length in
+a `BC` extra field. Positions are **virtual offsets**: 48 bits of block offset,
+16 bits of offset within the inflated block.
+
+A `.tbi` is a BGZF-compressed UCSC binning index. The genome is cut into a
+hierarchy — one bin of 512 Mb, 8 of 64 Mb, 64 of 8 Mb, 512 of 1 Mb, 4096 of
+128 kb, 32768 of 16 kb — and each record is registered in the smallest bin that
+contains it. A query collects the overlapping bins at each level, giving a
+handful of lookups. A **linear index** then records, per 16 kb window, the
+lowest virtual offset of any record overlapping it, which prunes chunks that
+provably end before the query starts.
+
+Both are implemented here rather than taken from `pysam`, because pysam is a
+compiled extension and this package has no required dependencies — the same
+property that lets it run in the browser. The formats are small and fully
+specified, so the cost is bounded. htslib remains the reference: the test suite
+compares this reader against files written by `bgzip` and queries answered by
+pysam, over hundreds of random regions including indels at region edges.
+
+### Transfer cost
+
+Each chunk's whole byte span is fetched in **one** ranged read and the blocks
+decoded from that buffer, rather than one request per block. The only over-read
+is one block at the tail, needed to complete the final record, so a locus costs
+roughly 66 kB and that figure **does not grow with the dataset**. A test
+measures it on two fixtures an order of magnitude apart in size to confirm the
+cost stays flat. The index is cached on disk after first use.
+
+Queries are a superset of the answer — a bin can hold records that miss the
+region — so every candidate is re-checked against its own coordinates. For a
+VCF record the span is the length of its REF allele, which is what makes indel
+handling at region edges worth testing explicitly.
+
+### Assembly safety
+
+Published zebrafish variant sets are on danRer11 (GRCz11); ZFIN has moved to
+GRCz12tu, whose coordinates differ by tens to hundreds of kilobases. Applying
+one to the other would mask the wrong bases *and report that known variants had
+been avoided*, so a declared mismatch raises rather than warns. An override
+exists for coordinates the user has already lifted over. An ad-hoc URL has no
+readable assembly, so it is reported as unverified instead of echoing back the
+declaration.
+
+## 7. Complexity and runtime
 
 | Operation | Cost |
 |---|---|
@@ -231,6 +283,7 @@ Required mismatches are then the site positions inside the primer that differ fr
 | Exhaustive scan | O(subject · primer) with 3'-first early abort; ~300 kb/s |
 | Seeded scan | O(1) index lookup plus O(hits · primer) |
 | Panel amplicon prediction | Runs on reported pairs only, not on the candidate square |
+| Remote variant query | One ranged read per chunk; ~66 kB per locus, flat in dataset size |
 
 A 2 kb locus with a 3.6 kb avoid-panel completes in a few seconds on one core.
 
@@ -244,4 +297,6 @@ A 2 kb locus with a 3.6 kb avoid-panel completes in a few seconds on one core.
 - Untergasser A. et al. (2012) Primer3 — new capabilities and interfaces. *Nucleic Acids Res.* 40:e115.
 - Neff M.M. et al. (1998) dCAPS, a simple technique for the genetic analysis of single nucleotide polymorphisms. *Plant J.* 14:387-392.
 - Brownstein M.J. et al. (1996) Modulation of non-templated nucleotide addition by Taq DNA polymerase. *BioTechniques* 20:1004-1010.
+- LaFave M.C., Varshney G.K., Vemulapalli M., Mullikin J.C. & Burgess S.M. (2014) A defined zebrafish line for high-throughput genetics and genomics: NHGRI-1. *Genetics* 198:167-170.
+- Li H. (2011) Tabix: fast retrieval of sequence features from generic TAB-delimited files. *Bioinformatics* 27:718-719.
 - Varshney G.K. et al. (2015) High-throughput gene targeting and phenotyping in zebrafish using CRISPR/Cas9. *Genome Res.* 25:1030-1042.

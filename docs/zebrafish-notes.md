@@ -60,9 +60,26 @@ This keeps only positions actually segregating in TU. In practice it recovers a 
 
 ### Getting variant data
 
-The Sanger Zebrafish Genomes Project publishes variant calls across strains and additional *Danio* species. Note that its data-sharing terms ask you to contact the project before publishing genome-scale analyses of their data — read the policy on the project page. For routine primer design you are consuming a handful of positions, not performing a genome-wide analysis, but check if in doubt.
+**NHGRI-1 (Burgess lab, NHGRI)** is the most directly useful set for this purpose, and `danioprime` can query it by region without any download:
 
-If your lab has resequenced its own stocks, that VCF is better than any public resource, because it describes the fish in your tanks.
+```bash
+danioprime sources                       # what is available, and how to cite it
+danioprime genotype --region chr5:1,000,000-1,006,000 \
+    --reference danRer11.fa --assembly danRer11 \
+    --variant-source nhgri1 --strain NHGRI1 --heterozygous-only
+```
+
+NHGRI-1 was derived from founder parents sequenced to ~50×, and the stated purpose of the resource is that a researcher can know the exact sequence, with all variants, of a given region — which is exactly the question primer design asks. The same data is browsable as the `ZebrafishGenomics` UCSC track hub.
+
+There is a second file on that site worth knowing about: an **invariant** BED, marking the portion of the genome *confirmed to match* the reference. That is a stronger guarantee than the absence of a called variant, because absence can also mean no coverage or unmappable sequence. If you want positive assurance rather than the absence of a warning, design inside the invariant regions; pass the BED as `--variants` inverted, or intersect it yourself and pass the complement with `--exclude`.
+
+**Sanger Zebrafish Genomes Project** publishes calls across strains and additional *Danio* species. Its data-sharing terms ask you to contact the project before publishing genome-scale analyses — read the policy on the project page. Routine primer design consumes a handful of positions rather than performing a genome-wide analysis, but check if in doubt.
+
+**Your own lab's resequencing** beats any public resource, because it describes the fish in your tanks. Pass it with `--variants`, or bgzip and tabix it and pass `--variants-url` with a local path to get region-scoped reads.
+
+#### All of this is on danRer11
+
+Every published set above is on danRer11 (GRCz11). If you are working in GRCz12tu coordinates, they do not apply, and `danioprime` will refuse the combination rather than mask the wrong bases. Either work in danRer11 for the variant check, or lift the variant coordinates over and pass `--allow-assembly-mismatch` to say you have done so.
 
 ---
 

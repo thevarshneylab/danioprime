@@ -70,6 +70,42 @@ danioprime genotype --template kcnh6a_locus.fa --cut-site 1768 \
 
 A variant anywhere in the footprint is penalised; a variant within the 3'-terminal window is **always** disqualifying. `--heterozygous-only` is the detail that matters in practice: a position fixed homozygous-alternate in your line is *not* a hazard — the primer just has to match the line, not the reference — so excluding those recovers primer sites that naive masking throws away.
 
+#### Published variant sets, queried by region
+
+You do not need a local VCF. `danioprime sources` lists published resources that can be read over the network, and only the locus is transferred:
+
+```bash
+danioprime genotype \
+    --region chr5:1,000,000-1,006,000 --reference danRer11.fa \
+    --assembly danRer11 \
+    --variant-source nhgri1 --strain NHGRI1 --heterozygous-only
+```
+
+```
+note: 1,284 variant(s) from NHGRI-1 (danRer11) in chr5:1000001-1006000;
+      66 kB fetched in 1 request(s)
+```
+
+`nhgri1` is the **NHGRI-1** line from the Burgess lab at NHGRI ([LaFave et al. 2014](https://doi.org/10.1534/genetics.114.166769)), the strain built so that "the exact sequence (with all variants) of a particular genomic region" is known. The VCF is 214 MB; using its tabix index, a locus costs about **66 kB of transfer regardless of dataset size**, so there is nothing to download and nothing to keep in sync. The index itself is cached after first use.
+
+`--variants-url` takes any bgzip-compressed, tabix-indexed VCF or BED, local or remote, so a resource missing from the registry is never a blocker. The same data is also browsable as the `ZebrafishGenomics` UCSC track hub, which `danioprime sources` prints.
+
+#### The assembly trap, and why this refuses rather than warns
+
+Every published zebrafish variant set is on **danRer11 / GRCz11**. ZFIN has moved to GRCz12tu, and the coordinates are not transferable — shifts of tens to hundreds of kilobases are normal.
+
+Masking a GRCz12tu template with GRCz11 coordinates would exclude the wrong bases *while reporting that known polymorphisms were avoided*. That is worse than not checking at all, so `danioprime` **refuses** the combination:
+
+```
+danioprime: NHGRI-1 is on danRer11, but the template coordinates were declared
+as GRCz12tu. These assemblies' coordinates are not transferable [...] so masking
+would exclude the wrong bases while reporting that known variants were avoided.
+Either supply a danRer11 template, lift your coordinates over to danRer11
+first, or pass --allow-assembly-mismatch if you have already done so.
+```
+
+An ad-hoc `--variants-url` carries no assembly that can be read, so its assembly is reported as `unknown (unverified)` with a warning, rather than echoing back whatever you declared as though it had been checked.
+
 ### 4. Assay geometry
 
 | Mode | What it enforces |
@@ -246,9 +282,11 @@ Scanning strategies and their guarantees are documented in [`docs/algorithm.md`]
 
 Being clear about the edges:
 
-- **It does not fetch sequence for you.** No Ensembl or ZFIN API calls. Supply FASTA, or a `--region` with an indexed `--reference`. This keeps runs reproducible and offline, but it does mean you fetch the locus yourself.
+- **It does not fetch sequence for you.** No Ensembl or ZFIN API calls. Supply FASTA, or a `--region` with an indexed `--reference`. This keeps runs reproducible and offline, but it does mean you fetch the locus yourself. (Variant *data* is the exception: `--variant-source` reads published sets over the network, since downloading 214 MB to read 6 kb would be absurd.)
 - **Ohnolog pairing is your call.** `guess_ohnolog_symbol` infers `kcnh6a` → `kcnh6b` from the ZFIN suffix convention and the `qpcr` mode prints it as a hint, but it is a naming convention, not an orthology assertion. Plenty of genes end in `a`/`b` without being ohnologs. Confirm against ZFIN or an orthology database, then pass the sequence with `--avoid`.
 - **The thermodynamic model is two-state nearest-neighbour**, not a partition function. Mismatched-duplex Tm is a coarse estimate adequate for ranking cross-reactivity, not a substitute for a full calculation.
+- **No liftOver.** It will refuse a cross-assembly variant mask but will not convert coordinates for you; use UCSC chain files and spot-check the result.
+- **The browser build cannot reach remote variant sets**, because Pyodide has no sockets. Paste a VCF there, or use the CLI.
 - **No multiplex optimisation.** Pairs are scored individually; it will not solve a 24-plex panel for you.
 - **The enzyme table is a curated common subset** (60 enzymes). Type IIS enzymes that cut at a distance are deliberately excluded, since dCAPS fragment prediction assumes the cut falls inside the recognition site. Supply your own with `--enzymes`.
 - **It has not been validated against bench results at scale.** The algorithms are tested for correctness and the predictions are internally consistent and independently re-derived in the test suite, but "these primers worked in N of M loci" is the evidence that would make this publishable, and it does not exist yet. See [Validation](#validation).
