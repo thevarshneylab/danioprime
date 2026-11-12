@@ -45,20 +45,20 @@ def strip_ansi(text: str) -> str:
     return ANSI_RE.sub("", text)
 
 
-def _enable_windows_vt() -> bool:
+def _enable_windows_vt(fd: int) -> bool:
     """Ask a Windows console to interpret escape sequences. True if it will.
 
     Windows Terminal and the modern console host both understand them, but only
-    once the process has asked, and nothing asks on our behalf. Returns False
-    when stdout is not a console at all, which is the right answer for ``auto``.
+    once the process has asked, and nothing asks on our behalf.
     """
     if sys.platform != "win32":  # pragma: no cover - exercised on Windows CI
         return True
     try:  # pragma: no cover - exercised on Windows CI
         import ctypes
 
+        handle_id = -11 if fd == 1 else -12  # STD_OUTPUT_HANDLE / STD_ERROR_HANDLE
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        handle = kernel32.GetStdHandle(handle_id)
         mode = ctypes.c_uint32()
         if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
             return False
@@ -68,6 +68,27 @@ def _enable_windows_vt() -> bool:
         )
     except Exception:  # pragma: no cover - any failure means "no colour"
         return False
+
+
+def _console_ready(stream: Any | None) -> bool:
+    """Whether *stream* will render escape sequences rather than show them.
+
+    Only a real Windows console needs preparing, and only the process's own
+    stdout or stderr can be prepared -- so the question is asked of the stream
+    in hand rather than of the process. A stream with no file descriptor (a
+    buffer, a test double) is taken at its word: nothing about a Windows
+    console applies to it, and consulting the process's real stdout instead
+    would make the answer depend on something the caller never passed in.
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        fd = stream.fileno()  # type: ignore[union-attr]
+    except Exception:
+        return True
+    if fd not in (1, 2):
+        return True
+    return _enable_windows_vt(fd)
 
 
 def should_colour(
@@ -83,7 +104,7 @@ def should_colour(
     if mode == "never":
         return False
     if mode == "always":
-        _enable_windows_vt()
+        _console_ready(stream)  # best effort; the answer is yes either way
         return True
     if mode != "auto":
         raise ValueError(f"unknown colour mode {mode!r}")
@@ -96,7 +117,7 @@ def should_colour(
         return False
     forced = env.get("FORCE_COLOR")
     if forced is not None and forced != "0":
-        return _enable_windows_vt()
+        return _console_ready(stream)
     if stream is None:
         return False
     try:
@@ -107,7 +128,7 @@ def should_colour(
     if sys.platform != "win32" and not term:
         # A terminal with no TERM is unusual enough to be a harness pretending.
         return False
-    return _enable_windows_vt()
+    return _console_ready(stream)
 
 
 def paint(text: str, ansi: int, *, colour: bool = True, bold: bool = False) -> str:

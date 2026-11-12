@@ -24,6 +24,7 @@ from danioprime.assays.tails import (
 )
 from danioprime.cli import main
 from danioprime.design.candidate import Primer
+from danioprime.report import colour as colour_mod
 from danioprime.report.colour import ANSI_RE, paint, should_colour, strip_ansi
 from danioprime.report.writers import (
     TAIL_LEGEND,
@@ -164,6 +165,18 @@ class TestShouldColour:
     def test_dumb_terminal(self):
         assert not should_colour("auto", self.Tty(), {"TERM": "dumb"})
 
+    def test_a_stream_with_no_file_descriptor_is_taken_at_its_word(self):
+        """Otherwise the answer depends on the process's real stdout.
+
+        A Windows console has to be switched into VT mode before it renders
+        escape sequences, and only the process's own stdout or stderr can be
+        switched. Asking that question of a buffer or a test double used to
+        make the result turn on whether CI happened to redirect stdout, which
+        is not something the caller passed in.
+        """
+        assert not hasattr(self.Tty(), "fileno")
+        assert should_colour("auto", self.Tty(), {"TERM": "xterm"})
+
     def test_a_stream_that_raises_is_treated_as_not_a_terminal(self):
         class Broken:
             def isatty(self):
@@ -174,6 +187,64 @@ class TestShouldColour:
     def test_an_unknown_mode_is_an_error_not_a_guess(self):
         with pytest.raises(ValueError):
             should_colour("maybe", None, {})
+
+
+class TestWindowsConsole:
+    """The Windows branch, exercised on every platform.
+
+    This is the logic that decides whether a console will render escape
+    sequences or display them, and getting it wrong is not visible on Linux or
+    macOS, so it is driven here with the platform faked rather than left to the
+    one CI job that runs on Windows.
+    """
+
+    class Console:
+        def __init__(self, fd):
+            self._fd = fd
+
+        def isatty(self):
+            return True
+
+        def fileno(self):
+            return self._fd
+
+    @pytest.fixture
+    def on_windows(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(colour_mod.sys, "platform", "win32")
+        monkeypatch.setattr(
+            colour_mod, "_enable_windows_vt", lambda fd: (calls.append(fd), True)[1]
+        )
+        return calls
+
+    def test_a_real_console_is_switched_into_vt_mode(self, on_windows):
+        assert should_colour("auto", self.Console(1), {})
+        assert on_windows == [1], "stdout's handle should be the one prepared"
+
+    def test_stderr_too(self, on_windows):
+        assert should_colour("auto", self.Console(2), {})
+        assert on_windows == [2]
+
+    def test_a_console_that_will_not_switch_gets_no_colour(self, monkeypatch):
+        """Escape sequences would be displayed as text, which is worse."""
+        monkeypatch.setattr(colour_mod.sys, "platform", "win32")
+        monkeypatch.setattr(colour_mod, "_enable_windows_vt", lambda fd: False)
+        assert not should_colour("auto", self.Console(1), {})
+
+    def test_some_other_descriptor_is_left_alone(self, on_windows):
+        """Not a std stream, so no console mode of ours to set."""
+        assert should_colour("auto", self.Console(7), {})
+        assert on_windows == []
+
+    def test_term_is_not_required_on_windows(self, on_windows):
+        """A real Windows console usually has no TERM set."""
+        assert should_colour("auto", self.Console(1), {})
+
+    def test_always_still_returns_true_if_the_switch_fails(self, monkeypatch):
+        """--color always means the user knows where the output is going."""
+        monkeypatch.setattr(colour_mod.sys, "platform", "win32")
+        monkeypatch.setattr(colour_mod, "_enable_windows_vt", lambda fd: False)
+        assert should_colour("always", self.Console(1), {})
 
 
 class TestPaint:
