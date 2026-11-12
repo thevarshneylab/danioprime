@@ -51,7 +51,8 @@ class TestInformationalCommands:
         assert main(["tails"]) == 0
         out = capsys.readouterr().out
         assert "fluorescent" in out
-        assert "TGTAAAACGACGGCCAGT" in out
+        # Tails are written in lower case throughout, here included.
+        assert "tgtaaaacgacggccagt" in out
 
     def test_info(self, capsys):
         assert main(["info"]) == 0

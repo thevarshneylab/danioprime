@@ -10,6 +10,7 @@ from ..config import DesignParams
 from ..errors import DesignError
 from ..sequence import (
     DNA_BASES,
+    annotate_tail,
     gc_percent,
     max_dinucleotide_repeat,
     max_homopolymer,
@@ -78,8 +79,21 @@ class Primer:
 
     @property
     def ordered_seq(self) -> str:
-        """Full oligo to order, including any 5' tail."""
+        """Full oligo to order, including any 5' tail. Upper case throughout."""
         return self.tail + self.seq
+
+    @property
+    def annotated_seq(self) -> str:
+        """Full oligo with the tail in lower case, for reading.
+
+        Same bases as :attr:`ordered_seq`; the case is the only difference, and
+        it is what tells a reader where the tail stops and the locus begins.
+        """
+        return annotate_tail(self.tail, self.seq)
+
+    @property
+    def tail_length(self) -> int:
+        return len(self.tail)
 
     def three_prime_window(self, n: int) -> Interval:
         """Template interval covered by the *n* 3'-terminal bases."""
@@ -92,6 +106,7 @@ class Primer:
         return {
             "seq": self.seq,
             "ordered_seq": self.ordered_seq,
+            "annotated_seq": self.annotated_seq,
             "orientation": self.orientation,
             "start": self.start,
             "end": self.end,

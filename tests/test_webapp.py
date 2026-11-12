@@ -184,7 +184,9 @@ class TestGenotypeMode:
             {"mode": "genotype", "template": locus_text, "cut_site": 1500, "tails": "fluorescent"}
         )
         assert "M13F_universal" in r["order_sheet"]
-        assert r["pairs"][0]["forward"].startswith("TGTAAAACGACGGCCAGT")
+        # Rows carry the annotated form: the tail in lower case, so the page
+        # and anything pasted out of it show where the tail stops.
+        assert r["pairs"][0]["forward"].startswith("TGTAAAACGACGGCCAGT".lower())
         assert any("Three-primer" in n for n in r["order_notes"])
 
 
@@ -325,7 +327,7 @@ class TestInSituMode:
         r = run(self._payload(transcripts))
         assert r["ok"]
         assert r["pairs"]
-        assert r["pairs"][0]["reverse"].startswith("TAATACGACTCACTATAGGG")
+        assert r["pairs"][0]["reverse"].startswith("TAATACGACTCACTATAGGG".lower())
 
     @pytest.mark.parametrize(
         "scheme,tail",
@@ -338,19 +340,19 @@ class TestInSituMode:
     def test_all_three_polymerases_are_reachable(self, transcripts, scheme, tail):
         r = run(self._payload(transcripts, scheme=scheme))
         assert r["ok"], r.get("error")
-        assert r["pairs"][0]["reverse"].startswith(tail)
+        assert r["pairs"][0]["reverse"].startswith(tail.lower())
 
     def test_sense_schemes_tail_the_forward_primer(self, transcripts):
         r = run(self._payload(transcripts, scheme="riboprobe-t3-sense"))
         assert r["ok"]
-        assert r["pairs"][0]["forward"].startswith("AATTAACCCTCACTAAAGGG")
-        assert not r["pairs"][0]["reverse"].startswith("AATTAACCCTCACTAAAGGG")
+        assert r["pairs"][0]["forward"].startswith("AATTAACCCTCACTAAAGGG".lower())
+        assert not r["pairs"][0]["reverse"].startswith("AATTAACCCTCACTAAAGGG".lower())
 
     def test_dual_scheme_tails_both_ends_differently(self, transcripts):
         r = run(self._payload(transcripts, scheme="riboprobe-dual-t7-sp6"))
         assert r["ok"]
-        assert r["pairs"][0]["forward"].startswith("ATTTAGGTGACACTATAGAA")
-        assert r["pairs"][0]["reverse"].startswith("TAATACGACTCACTATAGGG")
+        assert r["pairs"][0]["forward"].startswith("ATTTAGGTGACACTATAGAA".lower())
+        assert r["pairs"][0]["reverse"].startswith("TAATACGACTCACTATAGGG".lower())
 
     def test_cross_hybridisation_table_is_returned(self, transcripts):
         r = run(self._payload(transcripts, targets="900-1100"))

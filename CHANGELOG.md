@@ -6,6 +6,38 @@ All notable changes to this project are documented here, following
 
 ## [Unreleased]
 
+### Added — a tail you can see
+
+- A 5' tail is now written in **lower case** wherever a human reads it, and
+  drawn in a **colour of its own**: M13F blue, M13R cyan, the pig-tail slate,
+  and T7, T3 and SP6 in green, orange and magenta. The promoters take the three
+  most separable colours on purpose, since transcribing from the wrong one
+  gives a probe that cannot hybridise.
+- The palette lives with the tail definitions, so a tail is the same colour in
+  the terminal, in the browser and in `danioprime tails`, which now prints it.
+- Case is the primary channel and colour the secondary one: everything the
+  colour says, the case says too, so a redirected report, a monochrome terminal
+  and a colour-blind reader lose nothing.
+- `--color auto|always|never` (`--colour` also accepted), honouring `NO_COLOR`,
+  `FORCE_COLOR` and `TERM=dumb`. `auto` colours only a terminal, so a report
+  written with `--out` and the report string the browser embeds never contain
+  escape sequences. Windows consoles are switched into VT mode when asked.
+- A tailed primer now reports both lengths — `38 nt, 20 anneal` — because the
+  oligo ordered is longer than the primer that anneals, and the Tm, GC and
+  position given are properties of the annealing portion only.
+- `Primer.annotated_seq` alongside `ordered_seq`; `annotated_seq.upper()` is
+  `ordered_seq`, so nothing here can change a base.
+
+### Changed
+
+- The pair table's `forward_seq` and `reverse_seq`, and the sequences in the
+  browser's pair cards, now carry the tail in lower case. The bases are
+  unchanged; only the case differs.
+- The order sheet gains a `sequence_annotated` column. `sequence` stays upper
+  case throughout and remains the column to order from: it is what gets pasted
+  into a vendor's form, and some bulk-upload parsers give lower case a meaning
+  of their own.
+
 ### Added — published variant sets, queried by region
 
 - `--variant-source nhgri1` reads the **NHGRI-1** zebrafish variant set

@@ -122,6 +122,15 @@ h2.sec:first-child { margin-top: 0; }
 .oligo .dir { font: 700 11px var(--mono); color: var(--accent); }
 .oligo .seq { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
 .oligo .num { font-size: 11.5px; color: var(--ink-soft); font-family: var(--mono); white-space: nowrap; text-align: right; }
+/* A 5' tail: lower case in the sequence, and the same colour on the sequence
+   and on the tail's name, which is what ties the two together. The two hexes
+   come from the Python palette so a tail is the same colour here as it is in
+   the terminal; --tc is for a light background, --tcd for a dark one. */
+.oligo .seq .tail, .oligo .num .tailname { color: var(--tc); font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .oligo .seq .tail, .oligo .num .tailname { color: var(--tcd); }
+}
+.tailhint { font-size: 12px; color: var(--ink-soft); margin: -4px 0 9px; }
 .card .notes { margin: 8px 0 0; padding-left: 16px; font-size: 12px; color: var(--ink-soft); }
 .card .notes li { margin: 2px 0; }
 .terms { margin-top: 8px; font-size: 11.5px; }
@@ -512,6 +521,29 @@ function renderTable(t) {
   return `<h2 class="sec">${esc(t.title)}</h2><div class="wrap"><table class="data"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+const HEX = /^#[0-9a-fA-F]{3,8}$/;
+
+// Split the annotated sequence at the tail boundary. The payload already gives
+// the tail in lower case, so a browser that drops the colour (or a reader who
+// cannot see it) loses nothing. The hexes are validated before they reach a
+// style attribute: they come from our own palette, but a value on its way into
+// CSS is worth checking anyway.
+function oligoSeq(seq, tailLen, light, dark) {
+  if (!tailLen || tailLen > seq.length) return esc(seq);
+  const vars = HEX.test(light || "") && HEX.test(dark || "")
+    ? ` style="--tc:${light};--tcd:${dark}"`
+    : "";
+  return `<span class="tail"${vars}>${esc(seq.slice(0, tailLen))}</span>${esc(seq.slice(tailLen))}`;
+}
+
+function tailChip(name, light, dark) {
+  if (!name) return "";
+  const vars = HEX.test(light || "") && HEX.test(dark || "")
+    ? ` style="--tc:${light};--tcd:${dark}"`
+    : "";
+  return ` · <span class="tailname"${vars}>+${esc(name)}</span>`;
+}
+
 function renderPair(p) {
   const flag = p.specific
     ? `<span class="flag ok">specific</span>`
@@ -526,10 +558,10 @@ function renderPair(p) {
       <span class="sz">${p.product_size} bp · ΔTm ${p.tm_diff} · dimer ${p.hetero_dimer_dg}</span>
       ${flag}${junction}<span class="sz" style="margin-left:auto">penalty ${p.penalty}</span></div>
     <div class="body">
-      <div class="oligo"><span class="dir">F</span><span class="seq">${esc(p.forward)}</span>
-        <span class="num">${p.forward_len} nt · ${p.forward_tm}°C · ${p.forward_gc}% · ${esc(p.forward_pos)}</span></div>
-      <div class="oligo"><span class="dir">R</span><span class="seq">${esc(p.reverse)}</span>
-        <span class="num">${p.reverse_len} nt · ${p.reverse_tm}°C · ${p.reverse_gc}% · ${esc(p.reverse_pos)}</span></div>
+      <div class="oligo"><span class="dir">F</span><span class="seq">${oligoSeq(p.forward, p.forward_tail_len, p.forward_tail_light, p.forward_tail_dark)}</span>
+        <span class="num">${p.forward_len} nt${tailChip(p.forward_tail, p.forward_tail_light, p.forward_tail_dark)} · ${p.forward_tm}°C · ${p.forward_gc}% · ${esc(p.forward_pos)}</span></div>
+      <div class="oligo"><span class="dir">R</span><span class="seq">${oligoSeq(p.reverse, p.reverse_tail_len, p.reverse_tail_light, p.reverse_tail_dark)}</span>
+        <span class="num">${p.reverse_len} nt${tailChip(p.reverse_tail, p.reverse_tail_light, p.reverse_tail_dark)} · ${p.reverse_tm}°C · ${p.reverse_gc}% · ${esc(p.reverse_pos)}</span></div>
       ${p.notes?.length ? `<ul class="notes">${p.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
       ${terms ? `<details class="terms"><summary>why this ranking</summary><table>${terms}</table></details>` : ""}
     </div></div>`;
@@ -545,7 +577,11 @@ function render(r) {
   if (r.pairs?.length === 0 && r.diagnosis) parts.push(`<div class="msg warn"><strong>No pair satisfied the constraints.</strong>\n${esc(r.diagnosis)}</div>`);
 
   if (r.pairs?.length) {
-    parts.push(`<h2 class="sec">${r.pairs.length} pair${r.pairs.length > 1 ? "s" : ""}</h2><div class="cards">${r.pairs.map(renderPair).join("")}</div>`);
+    const tailed = r.pairs.some((p) => p.forward_tail || p.reverse_tail);
+    const hint = tailed
+      ? `<p class="tailhint">Lower case marks the 5' tail — it does not anneal, and the Tm, GC and position shown are for the upper-case portion only.</p>`
+      : "";
+    parts.push(`<h2 class="sec">${r.pairs.length} pair${r.pairs.length > 1 ? "s" : ""}</h2>${hint}<div class="cards">${r.pairs.map(renderPair).join("")}</div>`);
   }
   for (const t of r.tables || []) parts.push(renderTable(t));
   if (r.order_sheet) {

@@ -141,11 +141,31 @@ class TestIndexHtml:
     def test_output_is_html_escaped(self, html):
         """Sequences and names are rendered into innerHTML, so they must be escaped."""
         assert re.search(r"const esc\s*=", html), "no escaping helper defined"
-        # Every interpolation of a model field in a template literal should be
-        # wrapped in esc(...) -- spot-check the sequence fields, which are the
-        # ones carrying user input.
+        # Every interpolation of a model field into markup has to go through
+        # something that escapes: esc() itself, or one of the helpers that
+        # escapes each piece it emits. Found by scanning the render functions
+        # rather than by looking for one known spelling, so that rewriting the
+        # markup cannot quietly drop the escaping -- and scoped to those
+        # functions, because the clipboard and download paths build plain text,
+        # where HTML-escaping a sequence would be the bug.
+        bodies = re.findall(r"\nfunction (render\w*)\(.*?\n\}", html, re.DOTALL)
+        assert bodies, "no render functions found to check"
+        markup = "".join(
+            m.group(0) for m in re.finditer(r"\nfunction render\w*\(.*?\n\}", html, re.DOTALL)
+        )
+        safe = ("esc(", "oligoSeq(", "tailChip(")
         for field in ("p.forward", "p.reverse", "p.name"):
-            assert f"esc({field})" in html, f"{field} is interpolated without escaping"
+            uses = re.findall(r"\$\{([^}]*\b" + re.escape(field) + r"\b[^}]*)\}", markup)
+            assert uses, f"{field} is never rendered"
+            for use in uses:
+                assert use.lstrip().startswith(safe), f"{field} unescaped in ${{{use}}}"
+
+    def test_colours_are_validated_before_reaching_a_style_attribute(self, html):
+        """The palette is ours, but a value on its way into CSS gets checked."""
+        assert re.search(r"const HEX\s*=\s*/\^#\[0-9a-fA-F\]", html), "no hex guard"
+        for helper in ("function oligoSeq", "function tailChip"):
+            body = html.split(helper, 1)[1].split("\n}", 1)[0]
+            assert "HEX.test(" in body, f"{helper} does not validate its colours"
 
     def test_page_states_that_nothing_is_uploaded(self, html):
         assert "ever leaves this machine" in html

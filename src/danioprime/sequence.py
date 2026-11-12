@@ -142,6 +142,20 @@ def soft_mask_runs(raw: str, *, min_length: int = 1) -> list[tuple[int, int]]:
     return runs
 
 
+def annotate_tail(tail: str, annealing: str) -> str:
+    """Join a 5' tail and an annealing sequence, the tail in lower case.
+
+    The convention is the one oligo order forms and papers already use: bases
+    that anneal are upper case, bases that were bolted on are not. Note that
+    lower case means something different here than it does in a template --
+    there it marks interspersed repeat (see :func:`soft_mask_runs`), here it
+    marks sequence that is not in the template at all. The two never meet: one
+    describes a locus, the other an oligo, and nothing reads an oligo back as
+    if it were a locus.
+    """
+    return tail.lower() + annealing.upper()
+
+
 @dataclass(slots=True)
 class SeqRecord:
     """A single FASTA record.

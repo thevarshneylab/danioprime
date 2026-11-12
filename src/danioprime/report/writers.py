@@ -13,6 +13,12 @@ Four of them, because primer design output is consumed in four different ways:
     Primer footprints to load into IGV or the UCSC browser alongside the locus,
     which is how you catch a primer sitting in a repeat that the numbers did
     not convey.
+
+In ``text`` and ``tsv`` a 5' tail is written in lower case, and in ``text`` it
+is also coloured when the terminal will take colour. ``bed`` is the exception:
+a tail has no footprint on the genome, so there is nothing for it to colour
+there, and the two colours in the BED track continue to mean forward and
+reverse strand.
 """
 
 from __future__ import annotations
@@ -25,8 +31,11 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from ..assays.tails import tail_style
+from ..design.candidate import Primer
 from ..design.pairing import PrimerPair
 from ..design.pipeline import DesignResult
+from .colour import paint
 
 PAIR_COLUMNS: tuple[str, ...] = (
     "pair",
@@ -48,11 +57,48 @@ PAIR_COLUMNS: tuple[str, ...] = (
 )
 
 
+def render_oligo(primer: Primer, *, colour: bool = False, label: bool = True) -> str:
+    """One oligo as a reader should see it.
+
+    The tail comes out in lower case and, when *colour* is set, in the colour
+    belonging to that tail; the name of the tail is painted to match, which is
+    what connects the two. Without colour the case still does the whole job.
+    """
+    if not primer.tail:
+        return primer.seq.upper()
+    style = tail_style(primer.tail_name or "")
+    tail = primer.tail.lower()
+    suffix = f"  (+{primer.tail_name})" if label and primer.tail_name else ""
+    return paint(tail, style.ansi, colour=colour) + primer.seq.upper() + paint(
+        suffix, style.ansi, colour=colour
+    )
+
+
+def render_order_sequence(item: Any, *, colour: bool = False) -> str:
+    """An order-sheet row's sequence, tail lower case and coloured."""
+    seq = getattr(item, "annotated", "") or getattr(item, "sequence", "")
+    tail_name = getattr(item, "tail", "")
+    if not tail_name or not colour:
+        return seq
+    head = len(seq) - len(getattr(item, "annealing_seq", "") or "")
+    if head <= 0 or head > len(seq):  # a companion: tail from end to end
+        head = len(seq)
+    style = tail_style(tail_name)
+    return paint(seq[:head], style.ansi, colour=True) + seq[head:]
+
+
+#: Said once, where primers are listed, rather than against every oligo.
+TAIL_LEGEND = (
+    "Lower case = 5' tail (does not anneal); Tm, GC and pos are for the "
+    "upper-case part."
+)
+
+
 def _pair_row(pair: PrimerPair) -> dict[str, Any]:
     return {
         "pair": pair.name,
-        "forward_seq": pair.forward.ordered_seq,
-        "reverse_seq": pair.reverse.ordered_seq,
+        "forward_seq": pair.forward.annotated_seq,
+        "reverse_seq": pair.reverse.annotated_seq,
         "product_size": pair.product_size,
         "forward_tm": f"{pair.forward.tm:.1f}",
         "reverse_tm": f"{pair.reverse.tm:.1f}",
@@ -189,8 +235,22 @@ def write_bed(
 
 
 def write_order_sheet(items: Sequence[Any], path: str | Path | None = None) -> str:
-    """Write (or return) an oligo order sheet as TSV."""
-    columns = ("name", "sequence", "length", "role", "tail", "gc_percent", "note")
+    """Write (or return) an oligo order sheet as TSV.
+
+    ``sequence`` is upper case and is the column to order from;
+    ``sequence_annotated`` is the same bases with the tail in lower case, for
+    checking by eye that the right tail went on the right primer.
+    """
+    columns = (
+        "name",
+        "sequence",
+        "sequence_annotated",
+        "length",
+        "role",
+        "tail",
+        "gc_percent",
+        "note",
+    )
     rows = [i.to_dict() if hasattr(i, "to_dict") else dict(i) for i in items]
     if path is None:
         import io
@@ -218,8 +278,14 @@ def format_text(
     verbose: bool = False,
     show: int = 5,
     extra_sections: Sequence[tuple[str, Sequence[str]]] = (),
+    colour: bool = False,
 ) -> str:
-    """Human-readable summary for the terminal."""
+    """Human-readable summary for the terminal.
+
+    *colour* is off by default: the caller knows whether the destination is a
+    terminal, and this function does not. Use
+    :func:`danioprime.report.colour.should_colour` to decide.
+    """
     out: list[str] = []
     tpl = result.template
     assay = result.request.context.get("assay", "generic")
@@ -258,19 +324,27 @@ def format_text(
                 out.append(f"  {w}")
         return "\n".join(out)
 
+    shown = result.pairs[:show]
     out.append("")
     out.append(f"Top {min(show, len(result.pairs))} of {len(result.pairs)} pair(s):")
-    for pair in result.pairs[:show]:
+    if any(p.forward.tail or p.reverse.tail for p in shown):
+        out.append(f"  {TAIL_LEGEND}")
+    for pair in shown:
         out.append("")
         flag = "" if pair.is_specific else "  [!] cross-amplification predicted"
         out.append(f"  {pair.name}  {pair.product_size} bp  penalty {pair.penalty:.2f}{flag}")
         for label, primer in (("F", pair.forward), ("R", pair.reverse)):
-            tail = f" (+{primer.tail_name})" if primer.tail_name else ""
-            out.append(
-                f"    {label}  {primer.ordered_seq}{tail}"
+            out.append(f"    {label}  {render_oligo(primer, colour=colour)}")
+            # With a tail the oligo on screen is longer than the primer that
+            # anneals, so give both numbers rather than the one that happens to
+            # drive the thermodynamics.
+            size = (
+                f"{len(primer.ordered_seq)} nt, {primer.length} anneal"
+                if primer.tail
+                else f"{primer.length} nt"
             )
             out.append(
-                f"       {primer.length} nt  Tm {primer.tm:.1f}C  GC {primer.gc:.0f}%  "
+                f"       {size}  Tm {primer.tm:.1f}C  GC {primer.gc:.0f}%  "
                 f"pos {primer.footprint.as_one_based()}  hairpin {primer.hairpin_dg:.1f}"
             )
             if primer.notes:

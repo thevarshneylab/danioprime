@@ -141,6 +141,20 @@ danioprime genotype \
 
 `--tails fluorescent` emits the **three** oligos the Varshney fluorescent-PCR system actually needs — an M13F-tailed forward, a pig-tailed reverse, and one labelled M13F primer listed once for the whole sheet, since that oligo is shared across every assay in the lab.
 
+A tail is printed in lower case, and in a colour of its own:
+
+```
+  kcnh6a_locus_gt_p1  327 bp  penalty 1.36
+    F  tgtaaaacgacggccagtCGCTACCGACTCAAGTAAAG  (+M13F)
+       38 nt, 20 anneal  Tm 60.1C  GC 50%  pos 1569-1588  hairpin -2.0
+    R  gtttcttCTATCTGTATGCCGCGATG  (+pigtail)
+       26 nt, 19 anneal  Tm 60.1C  GC 53%  pos 1877-1895  hairpin -1.8
+```
+
+Each tail keeps the same colour in the terminal, in the browser and in `danioprime tails`, which prints the palette. The colour makes a T3-tailed primer impossible to mistake for a T7 one at a glance; the lower case says the same thing without it, so a redirected report, a monochrome terminal or a reader who cannot tell the two greens apart loses nothing. `--color never` switches the colour off, `NO_COLOR` is honoured, and a report written with `--out` never contains escape sequences. Both numbers are given for a tailed primer because the oligo you order is longer than the primer that anneals, and the Tm, GC and position are properties of the part that anneals.
+
+In the order sheet the `sequence` column is upper case throughout — that is the column to paste into a vendor's form — and `sequence_annotated` beside it carries the same bases with the tail in lower case, for checking by eye that the right tail went on the right primer.
+
 ### RT-qPCR that cannot read genomic DNA or the ohnolog
 
 ```bash

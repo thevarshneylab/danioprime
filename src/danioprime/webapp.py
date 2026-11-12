@@ -36,6 +36,7 @@ from .assays.tails import (
     SCHEME_DESCRIPTIONS,
     TAIL_SCHEMES,
     reaction_plan,
+    tail_style,
 )
 from .config import PRESET_DESCRIPTIONS, DesignParams, get_preset
 from .design.pipeline import DesignRequest, DesignResult, run_design
@@ -152,6 +153,24 @@ def build_panel(payload: dict[str, Any]) -> ParalogPanel | None:
     return ParalogPanel(records=records)
 
 
+def _tail_fields(primer: Any, prefix: str) -> dict[str, Any]:
+    """Enough for the page to draw the tail without knowing the palette.
+
+    The colours come from the Python side so that a tail is the same colour in
+    the browser as it is in the terminal, and so there is one palette to change
+    rather than two that drift apart.
+    """
+    if not primer.tail:
+        return {f"{prefix}_tail": "", f"{prefix}_tail_len": 0}
+    style = tail_style(primer.tail_name or "")
+    return {
+        f"{prefix}_tail": primer.tail_name,
+        f"{prefix}_tail_len": len(primer.tail),
+        f"{prefix}_tail_light": style.light,
+        f"{prefix}_tail_dark": style.dark,
+    }
+
+
 def _pair_rows(result: DesignResult) -> list[dict[str, Any]]:
     """Flat, display-ready rows; the UI should not have to walk nested dicts."""
     rows: list[dict[str, Any]] = []
@@ -159,10 +178,16 @@ def _pair_rows(result: DesignResult) -> list[dict[str, Any]]:
         rows.append(
             {
                 "name": pair.name,
-                "forward": pair.forward.ordered_seq,
-                "reverse": pair.reverse.ordered_seq,
+                # Annotated, not ordered: what is shown and what is copied out
+                # of the page both mark the tail in lower case.
+                "forward": pair.forward.annotated_seq,
+                "reverse": pair.reverse.annotated_seq,
                 "forward_len": len(pair.forward.ordered_seq),
                 "reverse_len": len(pair.reverse.ordered_seq),
+                "forward_anneal_len": pair.forward.length,
+                "reverse_anneal_len": pair.reverse.length,
+                **_tail_fields(pair.forward, "forward"),
+                **_tail_fields(pair.reverse, "reverse"),
                 "product_size": pair.product_size,
                 "forward_tm": round(pair.forward.tm, 1),
                 "reverse_tm": round(pair.reverse.tm, 1),

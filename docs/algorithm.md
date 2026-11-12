@@ -219,6 +219,49 @@ Two constraints follow, and both are easy to get wrong by hand:
 
 Required mismatches are then the site positions inside the primer that differ from the template. Assays are ranked by fewest mismatches, then largest diagnostic band, then primer quality; the 3'-terminal base is kept matched by default.
 
+### Displaying a tailed oligo
+
+A tail is not part of the locus and does not anneal, so the oligo you order and
+the primer the thermodynamics describe are two different lengths. Every number
+reported — Tm, GC, position, hairpin — belongs to the annealing portion, and a
+tailed oligo printed as one uppercase run invites the reader to attach those
+numbers to the whole thing.
+
+So a tail is written in lower case and given a colour of its own. Two channels
+for one fact, deliberately:
+
+- **case** is the primary channel. It survives a pipe, a paste into a
+  spreadsheet, a monochrome terminal and a reader who cannot distinguish the
+  colours, and it is the convention oligo order forms and papers already use;
+- **colour** is the secondary channel, and it is what makes the distinction
+  work at a glance rather than on inspection — which is the only speed at which
+  anyone checks that the T7 primer is the reverse one.
+
+The palette lives with the tail definitions rather than in a renderer, so one
+tail is one colour in the terminal, in the browser and in `danioprime tails`.
+It is ordered by what is costly to confuse: the three RNA-polymerase promoters
+get green, orange and magenta, which stay distinct under every common form of
+colour vision deficiency, because transcribing from the wrong promoter yields a
+probe that cannot hybridise and the error is invisible until the in situ fails.
+The universal M13 tails get blue and cyan, related to each other because they
+are a pair; the pig-tail gets slate, because it is a 7 nt workhorse that is
+never mistaken for a promoter.
+
+Colour is suppressed unless the destination is a terminal — a report redirected
+into a file that is full of escape sequences looks like a corrupt file, and the
+string the browser embeds in its report pane would show them literally. The
+rules follow the conventions other command-line tools settled on (`NO_COLOR`,
+`FORCE_COLOR`, `TERM=dumb`, `--color auto|always|never`) so that existing
+dotfiles work.
+
+One place keeps upper case: the `sequence` column of the order sheet, which is
+what gets pasted into a vendor's form. A column that money is spent from should
+mean exactly one thing, and some bulk-upload parsers give lower case a meaning
+of their own; `sequence_annotated` sits beside it with the same bases for
+reading. Note also that lower case means something different in a template,
+where it marks interspersed repeat — the two never meet, because one describes
+a locus and the other an oligo.
+
 ---
 
 ## 6. Reading published variant sets by region

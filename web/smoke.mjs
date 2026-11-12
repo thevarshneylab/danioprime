@@ -88,9 +88,13 @@ const CASES = [
     }),
     expect: (r) => {
       if (!r.pairs.length) return "no probe templates";
-      // Dual promoters: different RNA polymerase sites at each end.
-      if (!r.pairs[0].forward.startsWith("ATTTAGGTGACACTATAGAA")) return "no SP6 on the forward primer";
-      if (!r.pairs[0].reverse.startsWith("TAATACGACTCACTATAGGG")) return "no T7 on the reverse primer";
+      // Dual promoters: different RNA polymerase sites at each end. Rows carry
+      // the tail in lower case, which is how the page draws it.
+      if (!r.pairs[0].forward.startsWith("atttaggtgacactatagaa")) return "no SP6 on the forward primer";
+      if (!r.pairs[0].reverse.startsWith("taatacgactcactataggg")) return "no T7 on the reverse primer";
+      if (r.pairs[0].forward_tail !== "SP6" || !/^#[0-9a-f]{6}$/.test(r.pairs[0].forward_tail_light)) {
+        return "the page is not given a tail name and colour to draw with";
+      }
       // The example ohnologs are ~94% identical in exons, so a probe over them
       // must be flagged even though the primers themselves discriminate.
       const tbl = r.tables.find((t) => /cross-hybrid/i.test(t.title));

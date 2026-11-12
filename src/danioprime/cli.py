@@ -49,9 +49,11 @@ from .config import PRESET_DESCRIPTIONS, DesignParams, get_preset
 from .design.pipeline import DesignRequest, DesignResult, run_design
 from .design.regions import IntervalSet, parse_interval
 from .errors import DanioPrimeError
+from .report.colour import should_colour
 from .report.writers import (
     emit,
     format_text,
+    render_order_sequence,
     summarise_iterable,
     write_bed,
     write_json,
@@ -240,6 +242,17 @@ def _add_output_args(p: argparse.ArgumentParser) -> None:
     )
     g.add_argument("--show", type=int, default=5, help="pairs to show in the text report")
     g.add_argument("--verbose", "-v", action="store_true", help="include penalty breakdowns")
+    g.add_argument(
+        "--color",
+        "--colour",
+        dest="color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help=(
+            "colour 5' tails in the text report; auto means only when stdout is a "
+            "terminal (NO_COLOR is honoured). Tails are written in lower case either way"
+        ),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -464,16 +477,31 @@ def write_outputs(
 
     fmt = getattr(args, "format", "text")
     if fmt == "text":
+        # The report is only coloured when it is going to a terminal, so a
+        # report written to a file never carries escape sequences.
+        colour = should_colour(
+            getattr(args, "color", "auto"),
+            None if args.out else sys.stdout,
+        )
         body = format_text(
             result,
             verbose=getattr(args, "verbose", False),
             show=getattr(args, "show", 5),
             extra_sections=extra_sections,
+            colour=colour,
         )
         if plan:
             lines = [f"scheme: {plan.scheme} - {SCHEME_DESCRIPTIONS.get(plan.scheme, '')}"]
-            lines += [f"{o.name}: {o.sequence} ({o.length} nt, {o.role})" for o in plan.oligos]
+            lines += [
+                f"{o.name}: {render_order_sequence(o, colour=colour)} "
+                f"({o.length} nt, {o.role})"
+                for o in plan.oligos
+            ]
             lines += [f"note: {n}" for n in plan.notes]
+            lines.append(
+                "order from the upper-case column of --order-out; the lower-case "
+                "bases above are the tail"
+            )
             body += "\n\n" + "Ordering:\n" + "\n".join(f"  {line}" for line in lines)
         emit(body, args.out)
     elif fmt == "tsv":
@@ -1078,7 +1106,8 @@ def cmd_enzymes(args: argparse.Namespace) -> int:
 
 
 def cmd_tails(args: argparse.Namespace) -> int:
-    from .assays.tails import TAILS
+    from .assays.tails import TAILS, tail_style
+    from .report.colour import paint
 
     rows = [
         {"scheme": name, "forward": mapping.get("forward", "-"), "reverse": mapping.get("reverse", "-"),
@@ -1087,15 +1116,29 @@ def cmd_tails(args: argparse.Namespace) -> int:
     ]
     text = ["Schemes:", summarise_iterable(rows, ("scheme", "forward", "reverse", "description")), ""]
     text.append("Tails:")
+    tails = sorted(TAILS.values(), key=lambda x: x.name)
     text.append(
         summarise_iterable(
+            # Lower case because that is how a tail is written everywhere else
+            # in the output; the table is the legend for the reports.
             [
-                {"tail": t.name, "sequence": t.seq, "length": len(t), "purpose": t.purpose}
-                for t in sorted(TAILS.values(), key=lambda x: x.name)
+                {"tail": t.name, "sequence": t.seq.lower(), "length": len(t), "purpose": t.purpose}
+                for t in tails
             ],
             ("tail", "sequence", "length", "purpose"),
         )
     )
+    # Painted after the table is laid out, so no escape sequence ever lands
+    # inside a column whose width was measured without it.
+    colour = should_colour(getattr(args, "color", "auto"), None if args.out else sys.stdout)
+    text.append("")
+    swatches = " ".join(paint(t.name, tail_style(t.name).ansi, colour=colour) for t in tails)
+    text.append(f"Colours in the text report: {swatches}")
+    if not colour:
+        text.append(
+            "(not shown: stdout is not a terminal, or colour is off. The lower case "
+            "carries the same information.)"
+        )
     emit("\n".join(text), args.out)
     return 0
 
@@ -1309,8 +1352,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", "-o")
     p.set_defaults(func=cmd_enzymes)
 
-    p = sub.add_parser("tails", help="list 5' tail schemes")
+    p = sub.add_parser("tails", help="list 5' tail schemes, their sequences and their colours")
     p.add_argument("--out", "-o")
+    p.add_argument(
+        "--color", "--colour", dest="color", choices=("auto", "always", "never"), default="auto"
+    )
     p.set_defaults(func=cmd_tails)
 
     p = sub.add_parser("info", help="show backends, optional tools and built-in tables")

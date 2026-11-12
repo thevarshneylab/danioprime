@@ -11,10 +11,18 @@ The fluorescent-PCR system (Varshney et al. 2015, *Genome Res.* 25:1030) is the
 one most often got wrong: it needs **three** oligos, not two. An M13F-tailed
 forward primer, a pig-tailed reverse primer, and a separately ordered
 fluorophore-labelled M13F primer that is shared across every assay in the lab.
+
+Tails are drawn in lower case wherever a human reads them, and each one has a
+colour of its own (:class:`TailStyle`). Both say the same thing -- these bases
+are not in your locus and do not anneal -- and saying it twice is deliberate:
+the case survives a pipe, a paste into a spreadsheet and a reader who cannot
+tell the colours apart, and the colour is what makes a T3 primer impossible to
+mistake for a T7 one at a glance.
 """
 
 from __future__ import annotations
 
+import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -24,6 +32,43 @@ from ..errors import DesignError
 from ..sequence import gc_percent, normalise
 
 Which = Literal["forward", "reverse", "both"]
+
+
+@dataclass(frozen=True, slots=True)
+class TailStyle:
+    """How a tail is drawn, so that one tail looks the same everywhere.
+
+    The colour lives on the tail rather than in a renderer, which is what makes
+    M13F the same blue in the terminal, in the browser and in anything either
+    of them is pasted into. Two hexes because the web page follows the reader's
+    light/dark preference, and a colour legible on paper-white is not legible
+    on near-black; one xterm-256 index because terminals are not asked.
+
+    Colour is never the only carrier: the tail is also drawn in lower case, so
+    a piped report, a monochrome terminal and a colour-blind reader lose
+    nothing. The palette keeps the three promoters -- the ones that are
+    genuinely dangerous to confuse, since the wrong polymerase gives a probe
+    that cannot hybridise -- in green, orange and magenta, which stay distinct
+    under every common form of colour vision deficiency.
+    """
+
+    #: Hex for a light background (the web page in light mode).
+    light: str
+    #: Hex for a dark background (the web page in dark mode).
+    dark: str
+    #: xterm-256 palette index for the terminal.
+    ansi: int
+
+
+#: Styles for tails that are not in the registry (user-registered ones).
+#: Chosen by a hash of the name, so a custom tail keeps its colour across runs
+#: and across machines rather than depending on registration order.
+FALLBACK_STYLES: tuple[TailStyle, ...] = (
+    TailStyle(light="#7a3fa0", dark="#c4a0f0", ansi=98),
+    TailStyle(light="#8a6d00", dark="#d8c060", ansi=136),
+    TailStyle(light="#a33a3a", dark="#f09090", ansi=131),
+    TailStyle(light="#2d6b8f", dark="#8cc0e0", ansi=67),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +85,8 @@ class Tail:
     is_promoter: bool = False
     #: Reference the sequence is taken from.
     source: str = ""
+    #: How to draw it; ``None`` falls back to a hash of the name.
+    style: TailStyle | None = None
 
     def __len__(self) -> int:
         return len(self.seq)
@@ -50,6 +97,7 @@ TAILS: dict[str, Tail] = {
         name="M13F",
         seq="TGTAAAACGACGGCCAGT",
         purpose="universal forward tail for fluorescent PCR and shared-primer sequencing",
+        style=TailStyle(light="#0b63b0", dark="#74b9ff", ansi=33),
         companion="TGTAAAACGACGGCCAGT",
         companion_note=(
             "order this separately with a 5' fluorophore (commonly 6-FAM) and include it "
@@ -61,6 +109,7 @@ TAILS: dict[str, Tail] = {
         name="M13R",
         seq="CAGGAAACAGCTATGAC",
         purpose="universal reverse tail for shared-primer sequencing",
+        style=TailStyle(light="#0e7490", dark="#67d3e8", ansi=37),
         companion="CAGGAAACAGCTATGAC",
         companion_note="order separately if a labelled or sequencing primer is needed",
     ),
@@ -71,6 +120,7 @@ TAILS: dict[str, Tail] = {
             "forces complete 3' A addition so fragment-analysis peaks are a single "
             "size rather than a +/-1 nt doublet (Brownstein et al. 1996)"
         ),
+        style=TailStyle(light="#5c6773", dark="#a8b3c0", ansi=103),
     ),
     # Promoter consensus sequences as given in Thermo Fisher's "DNA Template
     # Preparation for in vitro Transcription" guide (MAN0011982). In each the
@@ -80,6 +130,7 @@ TAILS: dict[str, Tail] = {
         name="T7",
         seq="TAATACGACTCACTATAGGG",
         purpose="T7 promoter for in vitro transcription of a riboprobe or sgRNA template",
+        style=TailStyle(light="#0f7a4a", dark="#5fd39a", ansi=35),
         is_promoter=True,
         source="Thermo Fisher MAN0011982 consensus",
     ),
@@ -87,6 +138,7 @@ TAILS: dict[str, Tail] = {
         name="T3",
         seq="AATTAACCCTCACTAAAGGG",
         purpose="T3 promoter for in vitro transcription",
+        style=TailStyle(light="#b4530a", dark="#f0a860", ansi=172),
         is_promoter=True,
         source="Thermo Fisher MAN0011982 consensus",
     ),
@@ -94,6 +146,7 @@ TAILS: dict[str, Tail] = {
         name="SP6",
         seq="ATTTAGGTGACACTATAGAA",
         purpose="SP6 promoter for in vitro transcription",
+        style=TailStyle(light="#b3246f", dark="#f08cc0", ansi=169),
         is_promoter=True,
         source="Thermo Fisher MAN0011982 consensus",
     ),
@@ -158,6 +211,21 @@ def get_tail(name: str) -> Tail:
         raise DesignError(f"unknown tail {name!r}; available: {sorted(TAILS)}") from exc
 
 
+def tail_style(name: str) -> TailStyle:
+    """How to draw the tail called *name*.
+
+    Unknown or unstyled names get a colour from :data:`FALLBACK_STYLES`, picked
+    by a checksum of the name so that it is the same colour on every run and on
+    every machine. Never raises: a missing colour must not be able to stop a
+    report from being written.
+    """
+    tail = TAILS.get(name)
+    if tail is not None and tail.style is not None:
+        return tail.style
+    index = zlib.crc32(name.encode("utf-8")) % len(FALLBACK_STYLES)
+    return FALLBACK_STYLES[index]
+
+
 @dataclass(slots=True)
 class OrderItem:
     """One oligo to order."""
@@ -170,11 +238,15 @@ class OrderItem:
     annealing_seq: str = ""
     gc_percent: float = 0.0
     note: str = ""
+    #: Same bases as :attr:`sequence`, with the tail in lower case. For
+    #: reading, not for ordering -- see :func:`order_sheet`.
+    annotated: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "sequence": self.sequence,
+            "sequence_annotated": self.annotated or self.sequence,
             "length": self.length,
             "role": self.role,
             "tail": self.tail,
@@ -215,6 +287,13 @@ def order_sheet(
     Companion oligos (the labelled M13F primer, say) are emitted once for the
     whole sheet rather than once per assay, because that is how they are used
     and how they should be costed.
+
+    Each item carries the sequence twice. ``sequence`` is upper case throughout
+    and is the one to paste into a vendor's form; ``annotated`` is the same
+    bases with the tail in lower case, for reading. They are kept apart on
+    purpose: every part of this program that a human reads marks tails in lower
+    case, but the column that money gets spent from should mean exactly one
+    thing, and some bulk-upload parsers give lower case a meaning of their own.
     """
     items: list[OrderItem] = []
     companions: dict[str, Tail] = {}
@@ -227,6 +306,7 @@ def order_sheet(
                 OrderItem(
                     name=f"{pair.name}_{suffix}" if pair.name else f"{role}",
                     sequence=primer.ordered_seq,
+                    annotated=primer.annotated_seq,
                     length=len(primer.ordered_seq),
                     role=role,
                     tail=primer.tail_name,
@@ -251,6 +331,11 @@ def order_sheet(
                 OrderItem(
                     name=f"{tail.name}_universal",
                     sequence=tail.companion,
+                    # A companion is tail sequence from end to end, so it reads
+                    # as lower case throughout and takes the colour of the tail
+                    # it extends -- which is the point, since it is the oligo
+                    # most often left out of the order.
+                    annotated=tail.companion.lower(),
                     length=len(tail.companion),
                     role="companion",
                     tail=tail.name,
