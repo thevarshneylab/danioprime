@@ -160,55 +160,56 @@ class TestDesign:
 
 
 class TestGenotype:
-    @pytest.fixture
-    def with_protospacer(self, tmp_path):
-        bg = make_seq(3000, 606)
-        spacer = make_seq(20, 707)
-        seq = bg[:1500] + spacer + "TGG" + bg[1523:]
-        path = tmp_path / "g.fa"
-        write_fasta([SeqRecord(name="g", seq=seq)], path)
-        return path, spacer
-
-    def test_protospacer_drives_the_design(self, with_protospacer, capsys):
-        path, spacer = with_protospacer
-        assert main(["genotype", "--template", str(path), "--protospacer", spacer]) == 0
+    def test_a_region_to_interrogate_drives_the_design(self, locus_file, capsys):
+        assert main(
+            ["genotype", "--template", str(locus_file), "--target", "1500-1600"]
+        ) == 0
         out = capsys.readouterr().out
-        assert "SpCas9 cut at 1518" in out
         assert "Predicted allele sizes" in out
 
-    def test_cut_site_may_be_given_directly(self, locus_file, capsys):
-        assert main(["genotype", "--template", str(locus_file), "--cut-site", "1500"]) == 0
-        assert "cut site" in capsys.readouterr().out
+    def test_it_runs_with_no_region_at_all(self, locus_file, capsys):
+        """No cut site, no protospacer, no target: still a valid request.
 
-    def test_missing_target_specification_is_reported(self, locus_file, capsys):
-        assert main(["genotype", "--template", str(locus_file)]) == 2
-        assert "--protospacer or --cut-site" in capsys.readouterr().err
+        This is the right call when the extent of the lesion is unknown, and
+        it used to be an error ("supply --protospacer or --cut-site").
+        """
+        assert main(["genotype", "--template", str(locus_file)]) == 0
+        assert "Predicted allele sizes" in capsys.readouterr().out
 
-    def test_absent_protospacer_is_explained(self, locus_file, capsys):
-        code = main(["genotype", "--template", str(locus_file), "--protospacer", "A" * 20])
-        assert code == 2
-        err = capsys.readouterr().err
-        assert "not found" in err
-        assert "--no-pam" in err
-
-    def test_protected_window_is_respected(self, with_protospacer, tmp_path):
-        path, spacer = with_protospacer
+    def test_no_primer_sits_inside_the_region(self, locus_file, tmp_path):
         out = tmp_path / "r.json"
-        main(
+        assert main(
             [
                 "genotype",
-                "--template", str(path),
-                "--protospacer", spacer,
-                "--protected", "60",
+                "--template", str(locus_file),
+                "--target", "1500-1600",
                 "--format", "json",
                 "--out", str(out),
             ]
-        )
+        ) == 0
         data = json.loads(out.read_text())
-        cut = data["cut_site"]["position_1based"] - 1
+        assert data["pairs"]
         for pair in data["pairs"]:
-            assert pair["forward"]["end"] <= cut - 60
-            assert pair["reverse"]["start"] >= cut + 60
+            # 1500-1600 one-based inclusive is [1499, 1600) zero-based.
+            assert pair["forward"]["end"] <= 1499
+            assert pair["reverse"]["start"] >= 1600
+
+    def test_the_cut_site_flags_are_gone(self, locus_file, capsys):
+        """Removed rather than deprecated, so a stale script fails loudly.
+
+        A flag that is silently ignored would let an old command line look
+        like it still constrains the design when it no longer does.
+        """
+        for flag, value in (("--protospacer", "A" * 20), ("--cut-site", "1500")):
+            with pytest.raises(SystemExit):
+                main(["genotype", "--template", str(locus_file), flag, value])
+            assert "unrecognized arguments" in capsys.readouterr().err
+
+    def test_a_region_outside_the_template_is_reported(self, locus_file, capsys):
+        assert main(
+            ["genotype", "--template", str(locus_file), "--target", "90000-90100"]
+        ) == 2
+        assert "outside the template" in capsys.readouterr().err
 
 
 class TestQpcr:
@@ -427,7 +428,7 @@ class TestRemoteVariantSources:
 
         args = [
             "genotype", "--region", "chr5:1,000,000-1,006,000",
-            "--reference", str(reference), "--cut-site", "3000",
+            "--reference", str(reference), "--target", "2950-3050",
             "--preset", "genotyping-gel", "--show", "0",
         ]
         assert main(args) == 0
@@ -467,7 +468,7 @@ class TestRemoteVariantSources:
             try:
                 code = main([
                     "genotype", "--region", "chr5:1,000,000-1,006,000",
-                    "--reference", str(reference), "--cut-site", "3000",
+                    "--reference", str(reference), "--target", "2950-3050",
                     "--variant-source", "testsrc", "--assembly", "GRCz12tu",
                 ])
             finally:
@@ -482,7 +483,7 @@ class TestRemoteVariantSources:
         with RangeServer(mirror.parent) as base:
             main([
                 "genotype", "--region", "chr5:1,000,000-1,006,000",
-                "--reference", str(reference), "--cut-site", "3000",
+                "--reference", str(reference), "--target", "2950-3050",
                 "--show", "0", "--variants-url", f"{base}/{mirror.name}",
             ])
         err = capsys.readouterr().err
@@ -503,7 +504,7 @@ class TestRemoteVariantSources:
 
         base_args = [
             "genotype", "--region", "chr5:1,000,000-1,006,000",
-            "--reference", str(reference), "--cut-site", "3000", "--show", "0",
+            "--reference", str(reference), "--target", "2950-3050", "--show", "0",
         ]
         with RangeServer(mirror.parent) as base:
             url = f"{base}/{mirror.name}"

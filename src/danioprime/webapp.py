@@ -23,11 +23,7 @@ from typing import Any
 from .annotation.gtf import canonical_transcript, find_transcripts, parse_annotation
 from .assays.dcaps import design_dcaps
 from .assays.genotyping import (
-    NUCLEASES,
-    CutSite,
-    GenotypingGeometry,
     design_genotyping,
-    locate_protospacer,
 )
 from .assays.insitu import design_insitu
 from .assays.qpcr import design_qpcr
@@ -249,45 +245,31 @@ def _package_result(
     return payload
 
 
+def interval_specs(payload: dict[str, Any], key: str) -> IntervalSet:
+    """Intervals from a form field, accepting a list or a loose string.
+
+    The browser sends "591-767, 900-950" from a text input; the JSON API may
+    send a list. Both mean the same thing, so both are accepted here rather
+    than in each mode.
+    """
+    raw = payload.get(key) or []
+    if isinstance(raw, str):
+        raw = [piece.strip() for piece in raw.replace(",", " ").split() if piece.strip()]
+    return IntervalSet.from_specs(raw) if raw else IntervalSet()
+
+
 def _mode_genotype(payload: dict[str, Any]) -> dict[str, Any]:
     template = parse_one_sequence(payload.get("template"), what="template", default_name="locus")
     params = build_params(payload)
     panel = build_panel(payload)
 
-    protospacer = (payload.get("protospacer") or "").strip()
-    cut_site_value = payload.get("cut_site")
-    nuclease = payload.get("nuclease") or "SpCas9"
-
-    if protospacer:
-        sites = locate_protospacer(
-            template.seq, protospacer, nuclease=nuclease, require_pam=not payload.get("no_pam")
-        )
-        if not sites:
-            pam = NUCLEASES[nuclease]["pam"]
-            raise DanioPrimeError(
-                f"that protospacer is not in the template on either strand with a valid "
-                f"{pam} PAM. Check the sequence (paste it without the PAM), or tick "
-                f"'locate without PAM', or give a cut position instead."
-            )
-        if len(sites) > 1:
-            where = ", ".join(str(s.position + 1) for s in sites)
-            raise DanioPrimeError(
-                f"that protospacer occurs {len(sites)} times in the template (cut sites "
-                f"{where}); give a cut position instead to say which one you mean"
-            )
-        site = sites[0]
-    elif cut_site_value not in (None, ""):
-        site = CutSite(position=int(cut_site_value) - 1, strand="+")
-    else:
-        raise DanioPrimeError("supply a protospacer or a cut position")
-
-    geometry = GenotypingGeometry(
-        protected=int(payload.get("protected") or 40),
-        min_flank=int(payload.get("min_flank") or 40),
-        max_flank=int(payload.get("max_flank") or 400),
-    )
     design = design_genotyping(
-        template, site, params, geometry=geometry, panel=panel, name=payload.get("name") or None
+        template,
+        params,
+        targets=interval_specs(payload, "targets"),
+        excluded=interval_specs(payload, "exclude"),
+        panel=panel,
+        name=payload.get("name") or None,
     )
     tables = []
     if design.allele_sizes:
@@ -476,19 +458,13 @@ def _mode_insitu(payload: dict[str, Any]) -> dict[str, Any]:
     params = build_params(payload)
     panel = build_panel(payload)
 
-    def specs(key: str) -> IntervalSet:
-        raw = payload.get(key) or []
-        if isinstance(raw, str):
-            raw = [piece.strip() for piece in raw.replace(",", " ").split() if piece.strip()]
-        return IntervalSet.from_specs(raw) if raw else IntervalSet()
-
     scheme = payload.get("scheme") or "riboprobe-t7"
     design = design_insitu(
         template,
         params,
         scheme=scheme,
         panel=panel,
-        targets=specs("targets"),
+        targets=interval_specs(payload, "targets"),
         sense_control=not payload.get("no_sense_control"),
         min_identity=float(payload.get("cross_hyb_identity") or 85.0) / 100.0,
         min_block=int(payload.get("cross_hyb_length") or 100),
@@ -533,18 +509,12 @@ def _mode_design(payload: dict[str, Any]) -> dict[str, Any]:
     params = build_params(payload)
     panel = build_panel(payload)
 
-    def specs(key: str) -> IntervalSet:
-        raw = payload.get(key) or []
-        if isinstance(raw, str):
-            raw = [piece.strip() for piece in raw.replace(",", " ").split() if piece.strip()]
-        return IntervalSet.from_specs(raw) if raw else IntervalSet()
-
     result = run_design(
         DesignRequest(
             template=template,
             params=params,
-            targets=specs("targets"),
-            excluded=specs("excludes"),
+            targets=interval_specs(payload, "targets"),
+            excluded=interval_specs(payload, "excludes"),
             panel=panel,
             name=payload.get("name") or template.name,
             context={"assay": "generic"},
@@ -772,10 +742,6 @@ def ui_metadata() -> dict[str, Any]:
         "riboprobe_schemes": [
             {"name": name, "description": SCHEME_DESCRIPTIONS.get(name, "")}
             for name in sorted(RIBOPROBE_SCHEMES)
-        ],
-        "nucleases": [
-            {"name": name, "description": spec["description"]}
-            for name, spec in sorted(NUCLEASES.items())
         ],
         "tunable": list(TUNABLE),
         "defaults": {k: getattr(DesignParams(), k) for k in TUNABLE},

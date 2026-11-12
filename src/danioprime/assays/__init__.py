@@ -3,13 +3,10 @@
 from .dcaps import DcapsAssay, DcapsPrimer, design_dcaps
 from .enzymes import DEFAULT_ENZYMES, Enzyme, digest_fragments, find_sites, load_enzymes
 from .genotyping import (
-    NUCLEASES,
-    CutSite,
+    DEFAULT_EXPECTED_INDELS,
     GenotypingDesign,
-    GenotypingGeometry,
     design_genotyping,
     design_junction_pcr,
-    locate_protospacer,
     predict_allele_sizes,
 )
 from .insitu import (
@@ -37,19 +34,16 @@ from .tails import (
 __all__ = [
     "DEFAULT_ENZYMES",
     "RIBOPROBE_SCHEMES",
-    "NUCLEASES",
     "SCHEME_DESCRIPTIONS",
     "TAILS",
     "TAIL_SCHEMES",
     "ConservedBlock",
     "CrossHybridisation",
-    "CutSite",
     "DcapsAssay",
     "DcapsPrimer",
     "Enzyme",
     "InSituDesign",
     "GenotypingDesign",
-    "GenotypingGeometry",
     "OrderItem",
     "QpcrDesign",
     "ReactionPlan",
@@ -67,8 +61,8 @@ __all__ = [
     "find_sites",
     "intron_sizes_from_transcript",
     "load_enzymes",
-    "locate_protospacer",
     "order_sheet",
+    "DEFAULT_EXPECTED_INDELS",
     "predict_allele_sizes",
     "reaction_plan",
 ]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from helpers import make_seq
 
@@ -23,11 +25,8 @@ from danioprime.assays.enzymes import (
     site_matches,
 )
 from danioprime.assays.genotyping import (
-    CutSite,
-    GenotypingGeometry,
     design_genotyping,
     design_junction_pcr,
-    locate_protospacer,
     predict_allele_sizes,
 )
 from danioprime.assays.qpcr import design_qpcr, intron_sizes_from_transcript
@@ -40,82 +39,80 @@ from danioprime.assays.tails import (
     reaction_plan,
 )
 from danioprime.config import get_preset
+from danioprime.design.regions import Interval, IntervalSet
 from danioprime.errors import AnnotationError, DesignError
 from danioprime.sequence import SeqRecord, revcomp
 
 
-class TestProtospacerLocation:
-    @pytest.fixture
-    def with_target(self):
-        bg = make_seq(1200, 808)
-        spacer = make_seq(20, 909)
-        seq = bg[:500] + spacer + "TGG" + bg[523:]
-        return seq, spacer
+class TestGenotyping:
+    """No cut site anywhere: see the module docstring in assays/genotyping.py.
 
-    def test_plus_strand_site_and_cut_position(self, with_target):
-        seq, spacer = with_target
-        sites = locate_protospacer(seq, spacer)
-        assert len(sites) == 1
-        site = sites[0]
-        assert site.strand == "+"
-        assert site.pam == "TGG"
-        # SpCas9 cuts 3 bp from the PAM: spacer at [500, 520), cut before 517.
-        assert site.position == 517
-        assert site.spacer_start == 500
+    What is tested instead is the contract that replaced it -- a region the
+    amplicon must span and no primer may sit in -- plus the readout check,
+    which was always the sound half of the old geometry.
+    """
 
-    def test_minus_strand_site(self):
-        bg = make_seq(600, 111)
-        core = make_seq(20, 222)
-        seq = bg[:200] + "CCA" + core + bg[200:]
-        sites = locate_protospacer(seq, revcomp(core))
-        assert len(sites) == 1
-        assert sites[0].strand == "-"
-        assert sites[0].pam == "TGG"
-        assert sites[0].position == 203 + 20 - 17
-
-    def test_missing_pam_means_no_site(self, with_target):
-        seq, spacer = with_target
-        # Replace the PAM with something invalid.
-        broken = seq[:520] + "TAA" + seq[523:]
-        assert locate_protospacer(broken, spacer) == []
-        assert locate_protospacer(broken, spacer, require_pam=False)
-
-    def test_unknown_nuclease_is_rejected(self, with_target):
-        seq, spacer = with_target
-        with pytest.raises(DesignError, match="unknown nuclease"):
-            locate_protospacer(seq, spacer, nuclease="Cas99")
-
-    def test_empty_protospacer_is_rejected(self, with_target):
-        seq, _ = with_target
-        with pytest.raises(DesignError, match="empty"):
-            locate_protospacer(seq, "")
-
-
-class TestGenotypingGeometry:
     @pytest.fixture
     def design(self, locus, params):
         return design_genotyping(
-            locus,
-            CutSite(position=1000, strand="+"),
-            params,
-            geometry=GenotypingGeometry(protected=45, min_flank=45, max_flank=400),
+            locus, params, targets=IntervalSet([Interval(955, 1045)])
         )
 
-    def test_amplicon_spans_the_protected_window(self, design):
+    def test_the_amplicon_spans_the_region(self, design):
         assert design.pairs
         for pair in design.pairs:
-            assert pair.forward.start < 1000 - 45
-            assert pair.reverse.end > 1000 + 45
+            assert pair.forward.start < 955
+            assert pair.reverse.end > 1045
 
-    def test_no_primer_touches_the_protected_window(self, design):
+    def test_no_primer_sits_in_the_region(self, design):
+        """A primer inside the lesion does not amplify the mutant allele."""
         for pair in design.pairs:
-            assert pair.forward.end <= 1000 - 45
-            assert pair.reverse.start >= 1000 + 45
+            assert pair.forward.end <= 955
+            assert pair.reverse.start >= 1045
 
-    def test_primers_respect_max_flank(self, design):
-        for pair in design.pairs:
-            assert pair.forward.start >= 1000 - 400
-            assert pair.reverse.end <= 1000 + 400
+    def test_a_design_with_no_region_at_all_still_works(self, locus, params):
+        """The right answer when the extent of the lesion is unknown."""
+        design = design_genotyping(locus, params)
+        assert design.pairs
+        assert design.allele_sizes
+
+    def test_a_region_outside_the_template_is_an_error(self, locus, params):
+        with pytest.raises(DesignError, match="outside the template"):
+            design_genotyping(
+                locus, params, targets=IntervalSet([Interval(99999, 100050)])
+            )
+
+    def test_a_region_wider_than_the_product_window_is_diagnosed(self, locus, params):
+        """Naming the two constraints that conflict, not "no pair was found".
+
+        This is the trade-off the old point-anchored geometry hid: a cut
+        coordinate always fitted inside any product-size window, so nobody had
+        to notice that a readout chosen for short products cannot interrogate a
+        wide region.
+        """
+        narrow = replace(params, max_product_size=200, opt_product_size=180,
+                         min_product_size=100)
+        with pytest.raises(DesignError, match="--max-product-size"):
+            design_genotyping(
+                locus, narrow, targets=IntervalSet([Interval(500, 900)])
+            )
+
+    def test_enumeration_is_aimed_at_the_region(self, locus, params):
+        """Otherwise the candidate cap is spent at the 5' end of the template.
+
+        With no windows, enumeration walks the template from the start, hits
+        max_candidates_per_side, and keeps candidates that provably cannot pair
+        with a target in the middle -- reporting no pairs on a template that
+        has plenty.
+        """
+        starved = replace(params, max_candidates_per_side=60)
+        design = design_genotyping(
+            locus, starved, targets=IntervalSet([Interval(955, 1045)])
+        )
+        assert design.pairs, "the candidate budget was spent in the wrong place"
+        reach = starved.max_product_size
+        for candidate in design.result.forward_candidates:
+            assert candidate.start >= 955 - reach
 
     def test_allele_sizes_are_predicted(self, design):
         rows = design.allele_sizes
@@ -127,32 +124,16 @@ class TestGenotypingGeometry:
     def test_small_indels_are_flagged_as_unresolvable(self, design):
         assert any("will not resolve" in w for w in design.result.warnings)
 
-    def test_cut_site_may_be_given_as_an_integer(self, locus, params):
-        design = design_genotyping(locus, 1000, params)
-        assert design.cut_site.position == 1000
-
-    def test_cut_site_outside_the_template_is_an_error(self, locus, params):
-        with pytest.raises(DesignError, match="outside the template"):
-            design_genotyping(locus, 99999, params)
-
-    def test_insufficient_flanking_sequence_is_explained(self, params):
-        short = SeqRecord(name="short", seq=make_seq(400, 3))
-        with pytest.raises(DesignError, match="5' of the cut site"):
-            design_genotyping(
-                short, 30, params, geometry=GenotypingGeometry(protected=20, min_flank=20)
-            )
-
-    def test_geometry_validation(self):
-        with pytest.raises(DesignError, match="must exceed"):
-            GenotypingGeometry(protected=10, min_flank=100, max_flank=50).validate()
-        # min_flank below the protected window is silently raised to match.
-        g = GenotypingGeometry(protected=60, min_flank=10, max_flank=300)
-        g.validate()
-        assert g.min_flank == 60
-
     def test_allele_size_prediction_drops_impossible_alleles(self):
         rows = predict_allele_sizes(20, indels=(-50, 5))
         assert [r["indel"] for r in rows] == [0, 5]
+
+    def test_nothing_named_after_a_cut_site_survives(self):
+        """A guard against it coming back by accident."""
+        import danioprime.assays.genotyping as module
+
+        leaked = [n for n in dir(module) if "cut" in n.lower() or "protospacer" in n.lower()]
+        assert leaked == [], f"cut-site machinery is back: {leaked}"
 
 
 class TestJunctionPcr:

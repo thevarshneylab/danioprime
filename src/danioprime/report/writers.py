@@ -291,9 +291,6 @@ def format_text(
     assay = result.request.context.get("assay", "generic")
     out.append(f"danioprime: {assay} design on {tpl.name} ({len(tpl.seq):,} nt)")
 
-    ctx = result.request.context
-    if "cut_site" in ctx:
-        out.append(f"  cut site: {ctx['cut_site'].get('description', '')}")
     if result.request.panel:
         out.append(
             f"  avoid-panel: {len(result.request.panel)} sequence(s), "

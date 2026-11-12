@@ -41,7 +41,7 @@ The header is the point. It records **the assembly the server reported** — nev
 
 ```bash
 danioprime genotype --template myo7aa_locus.fa --assembly GRCz11 \
-    --protospacer <your guide> --preset genotyping-fluorescent \
+    --target <the exon you edited> --preset genotyping-fluorescent \
     --tails fluorescent --variant-source nhgri1
 ```
 
@@ -78,7 +78,7 @@ Zebrafish retain thousands of ohnolog pairs from the teleost-specific whole-geno
 
 ```bash
 danioprime genotype --template demogenea_locus.fa \
-                    --protospacer AAGCCCTGTTATGTGCAACG \
+                    --target 1711-2040 \
                     --avoid demogeneb_locus.fa
 ```
 
@@ -110,7 +110,7 @@ Every candidate site is judged on three criteria, reported separately: mismatche
 TU, AB, TL and WIK are not isogenic. A primer sitting on a SNP that segregates in your line fails on one allele and looks exactly like a genotype — the worst kind of failure, because it is silent.
 
 ```bash
-danioprime genotype --template demogenea_locus.fa --cut-site 1768 \
+danioprime genotype --template demogenea_locus.fa --target 1711-2040 \
                     --variants sanger_zfish.vcf.gz --variant-chrom chr5 \
                     --template-offset 12400000 \
                     --strain TU --heterozygous-only
@@ -170,22 +170,23 @@ An ad-hoc `--variants-url` carries no assembly that can be read, so its assembly
 
 ## Worked examples
 
-The `examples/` directory ships a synthetic dataset built to have the properties that make zebrafish design hard — a mock ohnolog pair with a conserved exon block, a real NGG protospacer, and a VCF with TU/AB genotypes. `examples/demo.sh` runs every mode.
+The `examples/` directory ships a synthetic dataset built to have the properties that make zebrafish design hard — a mock ohnolog pair with a conserved exon block, a guide site with a real NGG PAM, and a VCF with TU/AB genotypes. `examples/demo.sh` runs every mode.
 
 ### Genotype a crispant
 
 ```bash
 danioprime genotype \
     --template examples/demogenea_locus.fa \
-    --protospacer AAGCCCTGTTATGTGCAACG \
+    --target 1751-1770 \
     --avoid examples/demogeneb_locus.fa \
     --preset genotyping-fluorescent \
     --tails fluorescent \
-    --protected 60 \
     --order-out oligos.tsv
 ```
 
-`--protected 60` is the parameter people get wrong: it must exceed the **largest indel you expect**, not the one you got, because the assay has to work before the alleles are known. A primer inside a deleted span will not amplify the mutant allele at all.
+**There is no cut site here, by design.** `--target` is the region to interrogate — the exon you disrupted, or the span you edited — and the amplicon must cover it while no primer sits inside it. A predicted cut coordinate is not where the lesion is: NHEJ routinely gives deletions of tens to hundreds of bases, and an F0 mosaic carries a spectrum of them at once. Placing primers a fixed distance from the predicted cut therefore optimises confidently for a coordinate whose relevance the tool cannot check, and when the real deletion is larger than assumed a primer sits inside it, the mutant allele does not amplify, and the fish reads as wild type. Give the region you know instead, or give none at all and get a design across the whole template — a wide amplicon that certainly contains the lesion beats a narrow one placed around a coordinate that might be wrong.
+
+The trade-off this exposes is real: a short product resolves small indels on a gel, and a wide region needs a long product to span it. Ask for both and the tool says which two constraints conflict rather than reporting that no pair was found.
 
 `--tails fluorescent` emits the **three** oligos the Varshney fluorescent-PCR system actually needs — an M13F-tailed forward, a pig-tailed reverse, and one labelled M13F primer listed once for the whole sheet, since that oligo is shared across every assay in the lab.
 

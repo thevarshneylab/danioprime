@@ -125,18 +125,33 @@ class TestIndexHtml:
         names = set(re.findall(r'fetchExample\("([^"]+)"\)', html))
         assert names <= set(BUNDLED), f"not bundled by build_site.py: {sorted(names - set(BUNDLED))}"
 
-    def test_demo_protospacer_is_present_in_the_demo_locus(self, html):
-        """The 'load example' button must produce an input that actually works."""
-        match = re.search(r'\$\("g-proto"\)\.value = "([ACGT]+)"', html)
-        assert match, "the genotype demo does not set a protospacer"
-        from danioprime.assays.genotyping import locate_protospacer
-        from danioprime.sequence import read_single_fasta
+    def test_every_demo_region_lies_inside_the_locus_it_is_set_with(self, html):
+        """The 'load example' buttons must produce inputs that actually work.
 
-        locus = read_single_fasta(ROOT / "examples" / "demogenea_locus.fa")
-        sites = locate_protospacer(locus.seq, match.group(1))
-        assert len(sites) == 1, (
-            f"the demo protospacer matches {len(sites)} sites in the demo locus"
-        )
+        Each demo sets a region to interrogate alongside a template; a region
+        past the end of that template would make the button produce an error
+        instead of a design.
+        """
+        from danioprime.sequence import read_single_fasta  # noqa: PLC0415
+
+        pairs = [
+            ("g-targets", "demogenea_locus.fa"),
+            ("x-targets", "myo7aa_locus.fa"),
+        ]
+        for field, fasta in pairs:
+            match = re.search(rf'\$\("{field}"\)\.value = "(\d+)-(\d+)"', html)
+            assert match, f"the demo does not set {field}"
+            start, end = int(match.group(1)), int(match.group(2))
+            locus = read_single_fasta(ROOT / "examples" / fasta)
+            assert 0 < start < end <= len(locus.seq), (
+                f"{field} is {start}-{end}, outside {fasta} ({len(locus.seq)} nt)"
+            )
+
+    def test_the_cut_site_inputs_are_gone(self, html):
+        """They would send payload keys the backend no longer reads."""
+        for stale in ('id="g-proto"', 'id="g-cut"', 'id="g-nuclease"', 'id="g-protected"',
+                      'id="g-nopam"', 'id="g-minflank"', 'id="g-maxflank"'):
+            assert stale not in html, f"{stale} is still in the page"
 
     def test_output_is_html_escaped(self, html):
         """Sequences and names are rendered into innerHTML, so they must be escaped."""

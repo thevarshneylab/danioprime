@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import pytest
 
-from danioprime.assays.genotyping import design_genotyping, locate_protospacer
+from danioprime.assays.genotyping import design_genotyping
 from danioprime.assays.qpcr import design_qpcr
 from danioprime.config import get_preset
+from danioprime.design.regions import Interval, IntervalSet
 from danioprime.sequence import read_single_fasta
 from danioprime.specificity.paralog import ParalogPanel, assess_primer
 
@@ -24,17 +25,32 @@ def locus(example_dir):
     return read_single_fasta(example_dir / "demogenea_locus.fa")
 
 
+#: The 20 nt the synthetic protospacer sits over, as a region to interrogate.
+#: This is what replaced the located cut site: the span you edited, which you
+#: know, rather than the coordinate a nuclease is predicted to cut, which the
+#: tool was only inferring.
+EDITED_REGION = IntervalSet([Interval(1750, 1770)])
+
+
 @pytest.fixture
 def ohnolog_panel(example_dir):
     return ParalogPanel.from_fasta(str(example_dir / "demogeneb_locus.fa"))
 
 
 class TestExampleData:
-    def test_protospacer_is_present_with_a_valid_pam(self, locus):
-        sites = locate_protospacer(locus.seq, PROTOSPACER)
-        assert len(sites) == 1
-        assert sites[0].pam.endswith("GG")
-        assert sites[0].position == 1767
+    def test_the_planted_protospacer_is_still_there_with_its_pam(self, locus):
+        """Kept as sequence, not as a design input.
+
+        Nothing consumes a protospacer any more -- genotyping is driven by the
+        region to interrogate, not by a predicted cut. But the synthetic locus
+        is more realistic for containing a guide site with a real NGG PAM, and
+        a test that it survives regeneration costs nothing.
+        """
+        index = locus.seq.upper().find(PROTOSPACER)
+        # 0-based, so 1751 in the 1-based coordinates demo.sh and the docs use.
+        assert index == 1750, "the protospacer moved; published coordinates will have shifted"
+        assert EDITED_REGION == IntervalSet([Interval(index, index + 20)])
+        assert locus.seq.upper()[index + 20 : index + 23].endswith("GG")
 
     def test_gtf_matches_the_transcript(self, example_dir):
         from danioprime.annotation.gtf import read_annotation
@@ -66,10 +82,10 @@ class TestExampleData:
 class TestExampleWorkflow:
     def test_ohnolog_panel_changes_the_genotyping_design(self, locus, ohnolog_panel):
         params = get_preset("genotyping-gel").replace(max_pairs=5)
-        site = locate_protospacer(locus.seq, PROTOSPACER)[0]
+        region = EDITED_REGION
 
-        naive = design_genotyping(locus, site, params)
-        guarded = design_genotyping(locus, site, params, panel=ohnolog_panel)
+        naive = design_genotyping(locus, params, targets=region)
+        guarded = design_genotyping(locus, params, targets=region, panel=ohnolog_panel)
 
         assert naive.pairs and guarded.pairs
 
@@ -100,8 +116,9 @@ class TestExampleWorkflow:
 
     def test_strict_specificity_removes_panel_binding_primers(self, locus, ohnolog_panel):
         params = get_preset("genotyping-gel").replace(max_pairs=5, reject_paralog_priming=True)
-        site = locate_protospacer(locus.seq, PROTOSPACER)[0]
-        strict = design_genotyping(locus, site, params, panel=ohnolog_panel)
+        strict = design_genotyping(
+            locus, params, targets=EDITED_REGION, panel=ohnolog_panel
+        )
         assert strict.pairs
         for pair in strict.pairs:
             for primer in (pair.forward, pair.reverse):

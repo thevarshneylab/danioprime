@@ -7,20 +7,31 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Exon 2 of demogenea, from demogenea.gtf. This is the region to interrogate:
+# the amplicon must span it and no primer may sit in it. Note there is no cut
+# site anywhere in these commands -- see docs/algorithm.md for why.
+EXON2=1711-2040
+# The 20 nt that were actually disrupted, inside exon 2. Fragment analysis wants
+# a short product, and a short product cannot span a 330 nt exon -- so for that
+# readout you interrogate the narrower window. This trade-off is the real one,
+# and it is visible now that the design is driven by a region rather than by a
+# point: a cut coordinate always looked small enough to fit.
+EDITED=1751-1770
+# Still used by block 3, which checks one primer against the ohnolog.
 PROTOSPACER=AAGCCCTGTTATGTGCAACG
 hr() { printf '\n\033[1m=== %s ===\033[0m\n' "$1"; }
 
-hr "1. Genotyping, with no knowledge of the ohnolog"
+hr "1. Genotyping exon 2, with no knowledge of the ohnolog"
 danioprime genotype \
     --template demogenea_locus.fa \
-    --protospacer "$PROTOSPACER" \
+    --target "$EXON2" \
     --preset genotyping-gel \
     --show 1
 
 hr "2. The same design, now avoiding the ohnolog"
 danioprime genotype \
     --template demogenea_locus.fa \
-    --protospacer "$PROTOSPACER" \
+    --target "$EXON2" \
     --avoid demogeneb_locus.fa \
     --preset genotyping-gel \
     --show 1
@@ -33,7 +44,7 @@ danioprime check \
 hr "4. Masking variants that segregate in the TU line"
 danioprime genotype \
     --template demogenea_locus.fa \
-    --protospacer "$PROTOSPACER" \
+    --target "$EXON2" \
     --variants strain_variants.vcf \
     --variant-chrom demogenea_locus \
     --strain TU --heterozygous-only \
@@ -44,7 +55,7 @@ danioprime genotype \
 hr "5. Fluorescent-PCR genotyping, with the order sheet"
 danioprime genotype \
     --template demogenea_locus.fa \
-    --protospacer "$PROTOSPACER" \
+    --target "$EDITED" \
     --avoid demogeneb_locus.fa \
     --preset genotyping-fluorescent \
     --tails fluorescent \
@@ -101,7 +112,7 @@ danioprime junction \
 hr "11. Machine-readable output"
 danioprime genotype \
     --template demogenea_locus.fa \
-    --protospacer "$PROTOSPACER" \
+    --target "$EXON2" \
     --avoid demogeneb_locus.fa \
     --preset genotyping-gel \
     --format json --out /tmp/danioprime_demo.json
@@ -113,7 +124,8 @@ print(f"best pair: {best['name']}  {best['product_size']} bp")
 print(f"  forward: {best['forward']['seq']}  Tm {best['forward']['tm']}")
 print(f"  reverse: {best['reverse']['seq']}  Tm {best['reverse']['tm']}")
 print(f"  why this rank: {best['penalty_terms']}")
-print(f"  cut site: {d['cut_site']['description']}")
+print(f"  smallest resolvable allele: "
+      f"{[r['allele'] for r in d['allele_sizes'] if r['resolvable_on_gel']][1]}")
 PY
 
 hr "9. Real zebrafish sequence: 1 kb inside myo7aa on danRer11"

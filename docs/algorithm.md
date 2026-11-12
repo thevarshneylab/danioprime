@@ -136,23 +136,25 @@ Reported pairs must have 3' ends at least `pair_diversity_window` (default 8 nt)
 
 ### Genotyping
 
-Three constraints must hold simultaneously:
+#### Why there is no cut site
 
-1. the amplicon spans the lesion, or the assay reports nothing;
-2. neither primer overlaps the lesion, or the mutant allele does not amplify — which looks like a homozygote;
-3. primers sit far enough out for the readout (Sanger read clearing the primer, or a short enough product for a gel).
+An earlier version anchored the whole design on one predicted cut coordinate: it centred the amplicon there, carved out a protected window of ±*n* bases, and searched two symmetric flanking windows. That has been removed, and the reason is worth stating because the geometry looked rigorous.
 
-The protected window is both **excluded** from primer placement and **required to be spanned** by the amplicon. That pairing is what distinguishes this from designing primers "near" the cut.
+A predicted cut coordinate is not where the lesion is. The blunt cut is, but what you genotype is the *repair*. NHEJ routinely yields deletions of tens to hundreds of bases, insertions, and complex rearrangements, and an F0 mosaic carries a spectrum of them at once. Sizing a protected window from "the largest indel you expect" is a guess that holds right up until the allele that matters is larger than the guess — and then a primer sits inside the deletion, the mutant allele does not amplify, and the animal reads as wild type. The failure is silent and in the costly direction.
 
-Nuclease geometry for cut-site calculation:
+So the criterion is the **region to interrogate**, which the user knows, rather than the cut position, which the tool was only inferring:
 
-| Nuclease | Spacer | PAM | Cut |
-|---|---|---|---|
-| SpCas9 | 20 nt | 3′ NGG | Blunt, 3 bp from the PAM |
-| SaCas9 | 21 nt | 3′ NNGRRT | Blunt |
-| Cas12a | 23 nt | 5′ TTTV | Staggered, 5′ overhangs |
+1. the amplicon spans the region, or the assay reports nothing;
+2. no primer sits inside it, or the mutant allele does not amplify;
+3. the readout can resolve the alleles you care about.
 
-Both strands are searched, so a protospacer copied from a design tool is found regardless of which strand of the locus you happen to have. PAM validation is on by default; `--no-pam` locates the sequence without it.
+Give no region and the design runs across the whole template. That is the right answer when the extent of the lesion is unknown: a wide amplicon that certainly contains it beats a narrow one placed around a coordinate that might be wrong.
+
+Two consequences follow, both of which the old geometry concealed.
+
+**The search windows now come from the constraints, not from a coordinate.** A valid pair spans the region and is at most `--max-product-size` long, so a forward primer further upstream than that cannot appear in any accepted pair. Enumeration is narrowed to the windows this implies, which removes no possible result. It is not cosmetic: candidate enumeration is capped, and on hitting the cap it keeps what it found first — the candidates nearest the 5′ end. Unaimed, it spends its whole budget at the wrong end of a multi-kilobase template and then reports that no pair satisfied the constraints.
+
+**Region width and product size can genuinely conflict.** A short product resolves small indels on a gel; a wide region needs a long product to span it. A cut coordinate always fitted inside any product-size window, so nobody had to notice. Now, when the region plus two primers exceeds `--max-product-size`, the tool names the two constraints that conflict instead of reporting that no pair was found.
 
 ### qPCR genomic-DNA protection
 

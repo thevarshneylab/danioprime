@@ -42,8 +42,7 @@ const CASES = [
     payload: () => ({
       mode: "genotype", preset: "genotyping-gel", overrides: { max_pairs: "2" },
       template: read("demogenea_locus.fa"), avoid: read("demogeneb_locus.fa"),
-      protospacer: "AAGCCCTGTTATGTGCAACG", nuclease: "SpCas9",
-      protected: "60", min_flank: "40", max_flank: "400", tails: "fluorescent",
+      targets: "1700-1800", tails: "fluorescent",
     }),
     expect: (r) => {
       if (!r.pairs.length) return "no pairs";
@@ -191,10 +190,10 @@ for (const c of CASES) {
 const bad = call({
   mode: "genotype",
   template: read("demogenea_locus.fa"),
-  protospacer: "A".repeat(20),
+  targets: "900000-900100",
 });
 if (bad.ok || !bad.error || bad.error.includes("Traceback")) {
-  console.error("FAIL error path: an invalid protospacer did not produce a clean message");
+  console.error("FAIL error path: a target outside the template did not produce a clean message");
   failures++;
 } else {
   console.log(`ok   error path returns: "${bad.error.slice(0, 60)}…"`);

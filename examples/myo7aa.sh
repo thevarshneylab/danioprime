@@ -57,13 +57,15 @@ LENGTH=$(awk '!/^>/ {n += length($0)} END {print n}' \
 MIDPOINT=$((LENGTH / 2))
 echo "note: ${LENGTH} bp on ${ASSEMBLY:-an unreported assembly}; targeting the midpoint"
 
-# Genotyping primers for a CRISPR allele. Replace --cut-site with --protospacer
-# <your guide> once you have one: the tool then locates the cut itself and
-# checks the PAM, rather than trusting a coordinate you typed.
+# Genotyping primers for a CRISPR allele. The region to interrogate is the
+# thing you know -- the exon you targeted -- not a predicted cut coordinate:
+# a repaired lesion is not confined to the cut, so primers placed a fixed
+# distance from it can land inside a larger deletion and fail to amplify the
+# mutant allele at all. Give --target the exon's span in template coordinates.
 run danioprime genotype \
   --template "$OUT/myo7aa_locus.fa" \
   --preset genotyping-gel \
-  --cut-site "$MIDPOINT" \
+  --target "$((MIDPOINT - 100))-$((MIDPOINT + 100))" \
   --tails fluorescent \
   "${AVOID_LOCUS[@]}" \
   --order-out "$OUT/myo7aa_order_sheet.tsv" \

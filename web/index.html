@@ -175,7 +175,7 @@ footer p { margin: 5px 0; max-width: 80ch; }
     <nav class="modes" role="tablist" id="tabs"></nav>
 
     <section class="pane" id="pane-genotype" role="tabpanel">
-      <p class="mode-note">Primers that bracket an edited site: the amplicon spans the lesion and neither primer touches it.</p>
+      <p class="mode-note">Primers that bracket the region you edited, discriminated against the ohnolog. There is no cut-site input on purpose: a repaired lesion is not confined to the predicted cut, so primers placed a fixed distance from it can sit inside a larger deletion and simply fail to amplify the mutant allele &mdash; which reads as wild type.</p>
       <label for="g-template">Locus sequence <span class="hint">— FASTA or raw bases</span></label>
       <textarea id="g-template" rows="5" placeholder=">demogenea_locus&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="g-file" accept=".fa,.fasta,.fna,.txt,.seq"><button class="link" data-demo="genotype">load example</button></div>
@@ -184,24 +184,12 @@ footer p { margin: 5px 0; max-width: 80ch; }
       <textarea id="g-avoid" rows="3" placeholder=">demogeneb_locus&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="g-avoidfile" accept=".fa,.fasta,.fna,.txt,.seq"></div>
 
-      <label for="g-proto">Protospacer <span class="hint">— without the PAM, either strand</span></label>
-      <input type="text" id="g-proto" placeholder="AAGCCCTGTTATGTGCAACG" spellcheck="false">
-      <div class="row" style="margin-top:8px">
-        <div><label for="g-nuclease">Nuclease</label><select id="g-nuclease"></select></div>
-        <div><label for="g-cut">or cut position <span class="hint">1-based</span></label><input type="number" id="g-cut" min="1" placeholder="1768"></div>
-      </div>
-      <div class="check"><input type="checkbox" id="g-nopam"><label for="g-nopam" style="margin:0;font-weight:400">Locate the protospacer without checking the PAM</label></div>
+      <label for="g-targets">Region to interrogate <span class="hint">— e.g. the exon you disrupted, 591-767. The amplicon must span it and no primer may sit in it. Leave empty to design across the whole template</span></label>
+      <input type="text" id="g-targets" placeholder="591-767" spellcheck="false">
 
       <div class="row" style="margin-top:12px">
         <div><label for="g-preset">Preset</label><select id="g-preset" data-preset></select></div>
         <div><label for="g-tails">5′ tails</label><select id="g-tails" data-tails></select></div>
-      </div>
-
-      <label for="g-protected">Protected window <span class="hint">— bases each side of the cut no primer may touch; set above your largest expected indel</span></label>
-      <input type="number" id="g-protected" value="40" min="0">
-      <div class="row" style="margin-top:8px">
-        <div><label for="g-minflank">Min flank</label><input type="number" id="g-minflank" value="40" min="0"></div>
-        <div><label for="g-maxflank">Max flank</label><input type="number" id="g-maxflank" value="400" min="1"></div>
       </div>
       <button class="go" data-run="genotype">Design genotyping primers</button>
     </section>
@@ -425,10 +413,6 @@ function buildForms() {
   ribo.addEventListener("change", riboNote);
   riboNote();
 
-  $("g-nuclease").innerHTML = meta.nucleases
-    .map((n) => `<option value="${esc(n.name)}"${n.name === "SpCas9" ? " selected" : ""}>${esc(n.name)}</option>`)
-    .join("");
-
   const pretty = {
     min_tm: "Min Tm (°C)", opt_tm: "Opt Tm (°C)", max_tm: "Max Tm (°C)",
     max_pair_tm_difference: "Max pair ΔTm", min_gc: "Min GC%", max_gc: "Max GC%",
@@ -465,10 +449,7 @@ function payloadFor(mode) {
   };
   if (mode === "genotype")
     return { ...common, template: $("g-template").value, avoid: $("g-avoid").value,
-      protospacer: $("g-proto").value, cut_site: $("g-cut").value || null,
-      nuclease: $("g-nuclease").value, no_pam: $("g-nopam").checked,
-      protected: $("g-protected").value, min_flank: $("g-minflank").value,
-      max_flank: $("g-maxflank").value, tails: $("g-tails").value };
+      targets: $("g-targets").value, tails: $("g-tails").value };
   if (mode === "qpcr")
     return { ...common, template: $("q-template").value, avoid: $("q-avoid").value,
       junctions: numbers($("q-junctions").value), gtf: $("q-gtf").value,
@@ -674,7 +655,7 @@ async function loadDemo(mode, btn) {
       const [a, b] = await Promise.all([fetchExample("demogenea_locus.fa"), fetchExample("demogeneb_locus.fa")]);
       if (mode === "genotype") {
         $("g-template").value = a; $("g-avoid").value = b;
-        $("g-proto").value = "AAGCCCTGTTATGTGCAACG"; $("g-protected").value = 60;
+        $("g-targets").value = "1700-1800";
         $("g-preset").value = "genotyping-gel";
       } else {
         $("d-template").value = a; $("d-pos").value = 1768; $("d-base").value = "C";

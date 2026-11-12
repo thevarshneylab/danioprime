@@ -6,6 +6,39 @@ All notable changes to this project are documented here, following
 
 ## [Unreleased]
 
+### Removed — the cut site is no longer a design criterion
+
+- `genotype` no longer takes `--protospacer`, `--cut-site`, `--nuclease`,
+  `--no-pam`, `--protected`, `--min-flank` or `--max-flank`, and the nuclease
+  geometry table, `CutSite` and `locate_protospacer` are gone with them.
+  **Removed rather than deprecated**, so a stale command line fails loudly
+  instead of looking as though it still constrains the design.
+- The criterion is now `--target`: the region to interrogate. The amplicon must
+  span it and no primer may sit inside it. Give none and the design runs across
+  the whole template.
+- Why: a predicted cut coordinate is not where the lesion is. NHEJ gives
+  deletions of tens to hundreds of bases, and an F0 mosaic carries a spectrum
+  at once. Sizing a protected window from "the largest indel you expect" holds
+  until the allele that matters is bigger than the guess — then a primer sits
+  inside the deletion, the mutant allele does not amplify, and the animal reads
+  as wild type. The old geometry optimised confidently for a coordinate whose
+  relevance it could not check, and failed silently in the costly direction.
+- `predict_allele_sizes` and the gel-resolvability warning stay: they concern
+  the readout, need only the product size, and were always the sound half.
+
+### Fixed — enumeration is aimed at the target
+
+- A valid pair spans the target and is at most `--max-product-size` long, so
+  candidate enumeration is now restricted to the windows that implies. This
+  removes no possible result, and it matters because enumeration is capped and
+  keeps what it finds first: unaimed, it spent its whole budget near the 5' end
+  of a long template and then reported that no pair satisfied the constraints.
+  The old cut-site windows had been hiding this.
+- A region wider than the product-size window can accommodate now raises an
+  error naming both constraints, instead of failing as "no pair found". A cut
+  coordinate always fitted inside any product-size window, so this conflict —
+  a short fragment-analysis product cannot span a wide exon — was invisible.
+
 ### Added — a real zebrafish locus, checked in
 
 - `examples/myo7aa_locus.fa` is **real sequence**: 1,000 bp of *Danio rerio*

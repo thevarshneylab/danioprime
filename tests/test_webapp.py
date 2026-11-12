@@ -30,13 +30,6 @@ def locus_text():
 
 
 @pytest.fixture
-def with_protospacer():
-    bg = make_seq(3000, 606)
-    spacer = make_seq(20, 707)
-    return ">g\n" + bg[:1500] + spacer + "TGG" + bg[1523:], spacer
-
-
-@pytest.fixture
 def ohnolog_text(locus_text):
     target = locus_text.split("\n", 1)[1]
     paralog = mutate(target, 0.10, 31)
@@ -122,48 +115,74 @@ class TestParameterBuilding:
 
 
 class TestGenotypeMode:
-    def test_protospacer_design(self, with_protospacer):
-        text, spacer = with_protospacer
-        r = run({"mode": "genotype", "template": text, "protospacer": spacer})
-        assert r["ok"]
+    def test_a_region_drives_the_design(self, locus_text):
+        r = run({"mode": "genotype", "template": locus_text, "targets": "1450-1550"})
+        assert r["ok"], r.get("error")
         assert r["pairs"]
         assert r["mode"] == "genotyping"
         assert any("allele sizes" in t["title"] for t in r["tables"])
-        assert "cut site" in r["report"]
 
-    def test_cut_position_design(self, locus_text):
-        r = run({"mode": "genotype", "template": locus_text, "cut_site": 1500})
-        assert r["ok"]
+    def test_no_region_at_all_is_valid(self, locus_text):
+        """It used to be an error; now it is the sensible default."""
+        r = run({"mode": "genotype", "template": locus_text})
+        assert r["ok"], r.get("error")
         assert r["pairs"]
 
-    def test_protected_window_is_honoured(self, with_protospacer):
-        text, spacer = with_protospacer
+    def test_no_primer_sits_inside_the_region(self, locus_text):
         r = run(
             {
                 "mode": "genotype",
-                "template": text,
-                "protospacer": spacer,
-                "protected": 70,
+                "template": locus_text,
+                "targets": "1450-1550",
                 "overrides": {"max_pairs": 5},
             }
         )
-        cut = r["extra"]["cut_site"]["position_1based"] - 1
+        assert r["ok"], r.get("error")
         for pair in r["pairs"]:
             f_end = int(pair["forward_pos"].split("-")[1])
             r_start = int(pair["reverse_pos"].split("-")[0])
-            assert f_end <= cut - 70
-            assert r_start - 1 >= cut + 70
+            assert f_end <= 1449
+            assert r_start >= 1551
 
-    def test_absent_protospacer_gives_actionable_advice(self, locus_text):
-        r = run({"mode": "genotype", "template": locus_text, "protospacer": "A" * 20})
-        assert not r["ok"]
-        assert "PAM" in r["error"]
-        assert "cut position" in r["error"]
+    def test_several_regions_are_accepted_from_one_field(self, locus_text):
+        """The page sends a single text input; commas or spaces both work."""
+        r = run({"mode": "genotype", "template": locus_text, "targets": "1400-1450, 1500-1550"})
+        assert r["ok"], r.get("error")
+        for pair in r["pairs"]:
+            f_end = int(pair["forward_pos"].split("-")[1])
+            r_start = int(pair["reverse_pos"].split("-")[0])
+            assert f_end <= 1399 and r_start >= 1551
 
-    def test_no_target_specified(self, locus_text):
-        r = run({"mode": "genotype", "template": locus_text})
+    def test_a_region_outside_the_template_is_explained(self, locus_text):
+        r = run({"mode": "genotype", "template": locus_text, "targets": "90000-90100"})
         assert not r["ok"]
-        assert "protospacer or a cut position" in r["error"]
+        assert "outside the template" in r["error"]
+
+    def test_a_region_too_wide_for_the_product_window_names_both_limits(self, locus_text):
+        r = run(
+            {
+                "mode": "genotype",
+                "template": locus_text,
+                "targets": "1000-1900",
+                "overrides": {"min_product_size": 100, "opt_product_size": 200,
+                              "max_product_size": 300},
+            }
+        )
+        assert not r["ok"]
+        assert "--max-product-size" in r["error"]
+
+    def test_the_cut_site_payload_keys_are_ignored_not_honoured(self, locus_text):
+        """Nothing should look like it still constrains the design.
+
+        A stale caller sending a protospacer gets a design over the whole
+        template -- which is what it asked for minus a key that no longer
+        exists -- rather than one quietly centred somewhere.
+        """
+        r = run({"mode": "genotype", "template": locus_text, "protospacer": "A" * 20,
+                 "cut_site": 1500, "protected": 70})
+        assert r["ok"], r.get("error")
+        assert "cut" not in r["report"].lower()
+        assert "cut_site" not in r.get("extra", {})
 
     def test_ohnolog_panel_is_applied(self, locus_text, ohnolog_text):
         r = run(
@@ -171,7 +190,7 @@ class TestGenotypeMode:
                 "mode": "genotype",
                 "template": locus_text,
                 "avoid": ohnolog_text,
-                "cut_site": 1500,
+                "targets": "1450-1550",
                 "overrides": {"max_pairs": 4},
             }
         )
@@ -181,7 +200,8 @@ class TestGenotypeMode:
 
     def test_tails_produce_an_order_sheet(self, locus_text):
         r = run(
-            {"mode": "genotype", "template": locus_text, "cut_site": 1500, "tails": "fluorescent"}
+            {"mode": "genotype", "template": locus_text, "targets": "1450-1550",
+             "tails": "fluorescent"}
         )
         assert "M13F_universal" in r["order_sheet"]
         # Rows carry the annotated form: the tail in lower case, so the page
@@ -507,11 +527,10 @@ class TestContract:
         json.loads(r["json"])
         assert r["tsv"].startswith("pair\t")
 
-    def test_results_are_json_serialisable(self, locus_text, with_protospacer):
-        text, spacer = with_protospacer
+    def test_results_are_json_serialisable(self, locus_text):
         for payload in (
             {"mode": "design", "template": locus_text},
-            {"mode": "genotype", "template": text, "protospacer": spacer},
+            {"mode": "genotype", "template": locus_text, "targets": "1450-1550"},
             {"mode": "check", "primers": "ACGTTGCATGCCAATGGCTA"},
         ):
             json.dumps(run(payload))
@@ -529,7 +548,7 @@ class TestUiMetadata:
         assert meta["version"]
         assert meta["modes"] == list(MODES)
         assert {p["name"] for p in meta["presets"]} >= {"qpcr", "genotyping-gel"}
-        assert any(n["name"] == "SpCas9" for n in meta["nucleases"])
+        assert "nucleases" not in meta, "the nuclease list went with the cut site"
         assert set(meta["defaults"]) == set(TUNABLE)
 
     def test_metadata_is_json_serialisable(self):

@@ -222,6 +222,43 @@ def _build_pair_pool(
     return diversify(merged, window=params.pair_diversity_window, limit=limit)
 
 
+def _windows_implied_by_targets(
+    request: DesignRequest, length: int
+) -> tuple[IntervalSet | None, IntervalSet | None]:
+    """Search windows that the target and product-size constraints already imply.
+
+    A valid pair spans every target and is at most ``max_product_size`` long, so
+    a forward primer further upstream of the first target than that -- or a
+    reverse primer further downstream of the last -- cannot appear in any pair
+    that would be accepted. Narrowing the enumeration to those windows
+    therefore removes no possible result.
+
+    It is not an optimisation for its own sake. Candidate enumeration is capped
+    (``max_candidates_per_side``), and on hitting the cap it keeps the
+    candidates it found first, which are the ones nearest the 5' end. On a
+    multi-kilobase template with a target in the middle, an unaimed enumeration
+    spends its whole budget at the wrong end and then reports that no pair
+    satisfied the constraints -- which is true, and useless. This is the
+    replacement for the flanking windows that the old cut-site geometry
+    supplied as a side effect of anchoring on a coordinate.
+    """
+    if not request.targets:
+        return None, None
+    starts = [interval.start for interval in request.targets]
+    ends = [interval.end for interval in request.targets]
+    span = max(ends) - min(starts)
+    reach = max(0, request.params.max_product_size - span)
+    forward = (
+        request.forward_search
+        or IntervalSet([Interval(max(0, min(starts) - reach), min(starts))])
+    )
+    reverse = (
+        request.reverse_search
+        or IntervalSet([Interval(max(ends), min(length, max(ends) + reach))])
+    )
+    return forward, reverse
+
+
 def run_design(request: DesignRequest, *, screen_top: int = 60) -> DesignResult:
     """Execute a design request."""
     params = request.params
@@ -245,8 +282,29 @@ def run_design(request: DesignRequest, *, screen_top: int = 60) -> DesignResult:
         junctions=request.junctions,
     )
 
-    fwd = enumerate_candidates(ctx, "F", request.forward_search or None)
-    rev = enumerate_candidates(ctx, "R", request.reverse_search or None)
+    if request.targets:
+        # A pair that spans the targets needs room for the span plus both
+        # primers. When that exceeds the product-size window, no pair can
+        # satisfy both constraints -- so say which two constraints conflict
+        # rather than enumerating thousands of candidates and reporting that
+        # none of them paired.
+        starts = [interval.start for interval in request.targets]
+        ends = [interval.end for interval in request.targets]
+        span = max(ends) - min(starts)
+        needed = span + 2 * params.min_length
+        if needed > params.max_product_size:
+            raise DesignError(
+                f"the region to interrogate spans {span} nt, so the shortest product that "
+                f"could span it with a primer at each end is {needed} nt -- longer than "
+                f"--max-product-size ({params.max_product_size} nt). Either narrow the "
+                f"target to the part that has to be covered, or raise the product-size "
+                f"window; note that a readout chosen for small products, such as "
+                f"fragment analysis, may not be able to accommodate a region this wide."
+            )
+
+    f_window, r_window = _windows_implied_by_targets(request, len(template.seq))
+    fwd = enumerate_candidates(ctx, "F", f_window or request.forward_search or None)
+    rev = enumerate_candidates(ctx, "R", r_window or request.reverse_search or None)
 
     result = DesignResult(
         request=request,

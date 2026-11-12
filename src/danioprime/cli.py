@@ -4,7 +4,7 @@ Subcommands mirror the assays rather than the machinery, because that is how
 the work arrives: "I need to genotype this crispant", not "I need a primer with
 these thermodynamic properties".
 
-    danioprime genotype  --template locus.fa --protospacer GG... --avoid ohnolog.fa
+    danioprime genotype  --template locus.fa --target 591-767 --avoid ohnolog.fa
     danioprime qpcr      --transcript tx.fa --gtf ann.gtf.gz --transcript-id ENSDART...
     danioprime dcaps     --template locus.fa --variant 601 --variant-base A
     danioprime junction  --template locus.fa --cassette pGTag.fa --insert-at 1200
@@ -31,12 +31,9 @@ from .annotation.gtf import (
 from .assays.dcaps import design_dcaps
 from .assays.enzymes import DEFAULT_ENZYMES, load_enzymes
 from .assays.genotyping import (
-    NUCLEASES,
-    CutSite,
-    GenotypingGeometry,
+    DEFAULT_EXPECTED_INDELS,
     design_genotyping,
     design_junction_pcr,
-    locate_protospacer,
 )
 from .assays.insitu import design_insitu
 from .assays.qpcr import design_qpcr
@@ -573,39 +570,16 @@ def cmd_genotype(args: argparse.Namespace) -> int:
     panel = resolve_panel(args)
     variants, variant_list, remote = resolve_all_variants(args, offset, len(template.seq))
 
-    if args.protospacer:
-        sites = locate_protospacer(
-            template.seq, args.protospacer, nuclease=args.nuclease, require_pam=not args.no_pam
-        )
-        if not sites:
-            raise DanioPrimeError(
-                f"protospacer not found on either strand of {template.name} with a valid "
-                f"{NUCLEASES[args.nuclease]['pam']} PAM. Check the sequence, or pass "
-                "--no-pam to locate it without PAM validation, or give --cut-site directly."
-            )
-        if len(sites) > 1:
-            positions = ", ".join(str(s.position + 1) for s in sites)
-            raise DanioPrimeError(
-                f"protospacer matches {len(sites)} places in the template ({positions}); "
-                "supply a longer template slice or use --cut-site to disambiguate"
-            )
-        cut = sites[0]
-    elif args.cut_site is not None:
-        cut = CutSite(position=args.cut_site - 1, strand="+")
-    else:
-        raise DanioPrimeError("supply --protospacer or --cut-site")
-
-    geometry = GenotypingGeometry(
-        protected=args.protected, min_flank=args.min_flank, max_flank=args.max_flank
-    )
     design = design_genotyping(
         template,
-        cut,
         params,
-        geometry=geometry,
+        targets=IntervalSet.from_specs(args.target) if args.target else IntervalSet(),
+        excluded=IntervalSet.from_specs(args.exclude) if args.exclude else IntervalSet(),
         panel=panel,
         variants=variants,
-        expected_indels=tuple(args.expected_indel) if args.expected_indel else (-10, -5, -2, -1, 1, 2, 5, 10),
+        expected_indels=(
+            tuple(args.expected_indel) if args.expected_indel else DEFAULT_EXPECTED_INDELS
+        ),
         name=args.name,
     )
     sections: list[tuple[str, Sequence[str]]] = []
@@ -1288,16 +1262,15 @@ def build_parser() -> argparse.ArgumentParser:
     # --- genotype ---------------------------------------------------------
     p = sub.add_parser("genotype", help="genotype an edited locus (CRISPR indel or point mutation)")
     _add_template_args(p)
-    g = p.add_argument_group("target site")
-    g.add_argument("--protospacer", help="sgRNA target sequence without the PAM, either strand")
-    g.add_argument("--cut-site", type=int, help="1-based position of the base 3' of the cut")
-    g.add_argument("--nuclease", choices=sorted(NUCLEASES), default="SpCas9", help="nuclease geometry")
-    g.add_argument("--no-pam", action="store_true", help="locate the protospacer without PAM validation")
-    g.add_argument("--protected", type=int, default=40,
-                   help="bases each side of the cut that no primer may touch; set this above the "
-                        "largest indel you expect")
-    g.add_argument("--min-flank", type=int, default=40, help="minimum primer distance from the cut")
-    g.add_argument("--max-flank", type=int, default=400, help="maximum primer distance from the cut")
+    g = p.add_argument_group("region to interrogate")
+    g.add_argument(
+        "--target", action="append", default=[],
+        help="the amplicon must span this region and no primer may sit in it, e.g. the exon "
+             "you disrupted (repeatable). Omit it to design over the whole template, which is "
+             "the right answer when the extent of the lesion is unknown",
+    )
+    g.add_argument("--exclude", action="append", default=[],
+                   help="primers must avoid this region (repeatable)")
     g.add_argument("--expected-indel", type=int, action="append", default=[],
                    help="indel size to predict product sizes for (repeatable)")
     p.add_argument("--name", help="prefix for pair names")

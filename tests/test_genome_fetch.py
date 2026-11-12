@@ -471,7 +471,7 @@ class TestWholeChainAgainstAStub:
                 [
                     "genotype",
                     "--template", str(locus_path),
-                    "--cut-site", "3000",
+                    "--target", "2950-3050",
                     "--tails", "fluorescent",
                     "--show", "1",
                 ]
@@ -526,6 +526,6 @@ class TestWholeChainAgainstAStub:
                 assert main(["fetch", symbol, "--base-url", base, "--flank", "500",
                              "--out", str(path)]) == 0
         capsys.readouterr()
-        assert main(["genotype", "--template", str(a), "--cut-site", "1500",
+        assert main(["genotype", "--template", str(a), "--target", "1450-1550",
                      "--avoid", str(b), "--show", "1"]) == 0
         assert "myo7aa" in capsys.readouterr().out

@@ -1,204 +1,51 @@
 """Genotyping an edited locus.
 
-Designing a genotyping assay is a geometry problem before it is a
-thermodynamics problem, and it is the geometry that generic tools leave to the
-user. Three constraints have to hold simultaneously:
+**There is deliberately no cut site here.** An earlier version anchored the
+whole design on one predicted cut coordinate: it centred the amplicon there,
+carved out a protected window of +/- n bases, and searched for primers in two
+symmetric flanking windows. That was the wrong criterion, for a reason that
+only shows up in the fish rather than in the output.
 
-* the amplicon must span the lesion, or the assay reports nothing;
-* neither primer may overlap the lesion, or the mutant allele will not amplify
-  -- which looks like a homozygote and is the failure mode that costs a
-  generation of fish;
-* the primers must sit far enough out that the readout works: enough margin for
-  a Sanger read to clear the primer, or a short enough product for a few-base
-  indel to resolve on a gel.
+A predicted cut coordinate is not where the lesion is. The blunt cut is, but
+what you genotype is the repair: NHEJ routinely gives deletions of tens to
+hundreds of bases, insertions, and complex rearrangements, and an F0 mosaic
+carries a spectrum of them at once. Sizing a protected window from "the largest
+indel you expect" is a guess that holds right up until the allele that matters
+is bigger than the guess -- and then a primer sits inside the deletion, the
+mutant allele does not amplify, and the fish reads as wild type. A design
+anchored on the cut optimises confidently for a coordinate whose relevance it
+cannot check, and fails silently in the direction that costs a generation.
 
-The protected window is sized from the largest indel the user expects rather
-than the one they got, because the assay has to work before the alleles are
-known.
+So genotyping here is the ordinary design problem plus a readout check. Primer
+placement is driven by primer quality, specificity against the ohnolog, and
+strain variants -- and, where the user says so, by ``targets``: the amplicon
+must span this region. That is a statement about what is to be interrogated,
+which the user knows, rather than about where a nuclease is predicted to cut,
+which the tool was only ever inferring.
+
+What remains from the old geometry is the part that was always sound:
+:func:`predict_allele_sizes` asks whether the readout can resolve the alleles
+you care about. That needs the product size and nothing else, and it is where
+the real constraint lives -- a 400 bp product cannot show you a 2 bp indel on
+agarose however carefully it was placed.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from ..config import DesignParams
 from ..design.pipeline import DesignRequest, DesignResult, run_design
 from ..design.regions import Interval, IntervalSet
 from ..errors import DesignError
-from ..sequence import SeqRecord, revcomp
+from ..sequence import SeqRecord
 from ..specificity.paralog import ParalogPanel
 
-Nuclease = Literal["SpCas9", "SaCas9", "Cas12a", "manual"]
-
-#: PAM and cut geometry per nuclease. ``cut_offset`` is measured from the 5' end
-#: of the protospacer on the strand the protospacer is written on.
-NUCLEASES: dict[str, dict[str, Any]] = {
-    "SpCas9": {
-        "pam": "NGG",
-        "pam_side": 3,
-        "spacer_length": 20,
-        "cut_offset": 17,
-        "blunt": True,
-        "description": "SpCas9: 20 nt spacer, 3' NGG PAM, blunt cut 3 bp from the PAM",
-    },
-    "SaCas9": {
-        "pam": "NNGRRT",
-        "pam_side": 3,
-        "spacer_length": 21,
-        "cut_offset": 18,
-        "blunt": True,
-        "description": "SaCas9: 21 nt spacer, 3' NNGRRT PAM",
-    },
-    "Cas12a": {
-        "pam": "TTTV",
-        "pam_side": 5,
-        "spacer_length": 23,
-        "cut_offset": 18,
-        "blunt": False,
-        "description": "Cas12a/Cpf1: 5' TTTV PAM, staggered cut leaving 5' overhangs",
-    },
-}
-
-
-def _iupac_match(pattern: str, seq: str) -> bool:
-    from ..sequence import IUPAC
-
-    if len(pattern) != len(seq):
-        return False
-    return all(base in IUPAC.get(code, frozenset()) for code, base in zip(pattern, seq, strict=True))
-
-
-@dataclass(slots=True)
-class CutSite:
-    """A nuclease target located on a template."""
-
-    position: int
-    strand: Literal["+", "-"]
-    protospacer: str = ""
-    pam: str = ""
-    nuclease: str = "manual"
-    spacer_start: int = -1
-    spacer_end: int = -1
-
-    @property
-    def description(self) -> str:
-        if not self.protospacer:
-            return f"manual cut site at {self.position + 1}"
-        return (
-            f"{self.nuclease} cut at {self.position + 1} "
-            f"({self.strand} strand, spacer {self.spacer_start + 1}-{self.spacer_end}, "
-            f"PAM {self.pam})"
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "position_1based": self.position + 1,
-            "strand": self.strand,
-            "nuclease": self.nuclease,
-            "protospacer": self.protospacer,
-            "pam": self.pam,
-            "spacer_1based": (
-                f"{self.spacer_start + 1}-{self.spacer_end}" if self.spacer_start >= 0 else None
-            ),
-            "description": self.description,
-        }
-
-
-def locate_protospacer(
-    template: str,
-    protospacer: str,
-    *,
-    nuclease: Nuclease = "SpCas9",
-    require_pam: bool = True,
-) -> list[CutSite]:
-    """Find a protospacer on either strand and compute the cut position.
-
-    The protospacer is given without its PAM, as ordered. Both strands are
-    searched, so the sequence as copied from a design tool will be found
-    regardless of which strand of the locus the user happens to have.
-    """
-    if nuclease not in NUCLEASES:
-        raise DesignError(f"unknown nuclease {nuclease!r}; choose from {sorted(NUCLEASES)}")
-    spec = NUCLEASES[nuclease]
-    template = template.upper()
-    spacer = protospacer.upper().replace(" ", "")
-    if not spacer:
-        raise DesignError("protospacer is empty")
-
-    pam_pattern: str = spec["pam"]
-    pam_side: int = spec["pam_side"]
-    cut_offset: int = spec["cut_offset"]
-    sites: list[CutSite] = []
-
-    for strand in ("+", "-"):
-        needle = spacer if strand == "+" else revcomp(spacer)
-        start = 0
-        while True:
-            idx = template.find(needle, start)
-            if idx < 0:
-                break
-            start = idx + 1
-            end = idx + len(needle)
-            if strand == "+":
-                if pam_side == 3:
-                    pam_seq = template[end : end + len(pam_pattern)]
-                    pam_ok = _iupac_match(pam_pattern, pam_seq)
-                    cut = idx + cut_offset
-                else:
-                    pam_seq = template[max(0, idx - len(pam_pattern)) : idx]
-                    pam_ok = _iupac_match(pam_pattern, pam_seq)
-                    cut = idx + cut_offset
-            else:
-                # Protospacer lies on the minus strand; PAM and cut mirror.
-                if pam_side == 3:
-                    pam_window = template[max(0, idx - len(pam_pattern)) : idx]
-                    pam_seq = revcomp(pam_window)
-                    pam_ok = _iupac_match(pam_pattern, pam_seq)
-                    cut = end - cut_offset
-                else:
-                    pam_window = template[end : end + len(pam_pattern)]
-                    pam_seq = revcomp(pam_window)
-                    pam_ok = _iupac_match(pam_pattern, pam_seq)
-                    cut = end - cut_offset
-            if require_pam and not pam_ok:
-                continue
-            sites.append(
-                CutSite(
-                    position=max(0, min(len(template), cut)),
-                    strand=strand,
-                    protospacer=needle,
-                    pam=pam_seq,
-                    nuclease=nuclease,
-                    spacer_start=idx,
-                    spacer_end=end,
-                )
-            )
-    return sites
-
-
-@dataclass(slots=True)
-class GenotypingGeometry:
-    """How far from the lesion the primers are allowed to sit."""
-
-    #: Bases each side of the cut that no primer may touch. Should exceed the
-    #: largest indel expected, since a primer inside the deleted span will not
-    #: amplify the mutant allele at all.
-    protected: int = 40
-    #: Minimum distance from the cut to the nearest primer base.
-    min_flank: int = 40
-    #: Maximum distance from the cut to the furthest primer base.
-    max_flank: int = 400
-
-    def validate(self) -> None:
-        if self.protected < 0:
-            raise DesignError("protected window cannot be negative")
-        if self.min_flank < self.protected:
-            self.min_flank = self.protected
-        if self.max_flank <= self.min_flank:
-            raise DesignError(
-                f"max_flank ({self.max_flank}) must exceed min_flank ({self.min_flank})"
-            )
+#: Indel sizes product sizes are predicted for when the caller names none.
+#: Spread rather than exhaustive: the point is to find the size below which the
+#: chosen readout stops separating alleles, not to enumerate outcomes.
+DEFAULT_EXPECTED_INDELS: tuple[int, ...] = (-10, -5, -2, -1, 1, 2, 5, 10)
 
 
 @dataclass(slots=True)
@@ -206,8 +53,6 @@ class GenotypingDesign:
     """Result of a genotyping design, with predicted allele sizes."""
 
     result: DesignResult
-    cut_site: CutSite
-    geometry: GenotypingGeometry
     expected_indels: tuple[int, ...] = ()
     allele_sizes: list[dict[str, Any]] = field(default_factory=list)
 
@@ -216,19 +61,11 @@ class GenotypingDesign:
         return self.result.pairs
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "cut_site": self.cut_site.to_dict(),
-            "geometry": {
-                "protected_window": self.geometry.protected,
-                "min_flank": self.geometry.min_flank,
-                "max_flank": self.geometry.max_flank,
-            },
-            "allele_sizes": self.allele_sizes,
-        }
+        return {"allele_sizes": self.allele_sizes}
 
 
 def predict_allele_sizes(
-    wt_size: int, indels: tuple[int, ...] = (-10, -5, -2, -1, 1, 2, 5, 10)
+    wt_size: int, indels: tuple[int, ...] = DEFAULT_EXPECTED_INDELS
 ) -> list[dict[str, Any]]:
     """Product sizes for a wild-type and a set of hypothetical indel alleles.
 
@@ -261,68 +98,46 @@ def predict_allele_sizes(
 
 def design_genotyping(
     template: SeqRecord,
-    cut_site: CutSite | int,
     params: DesignParams,
     *,
-    geometry: GenotypingGeometry | None = None,
+    targets: IntervalSet | None = None,
     panel: ParalogPanel | None = None,
     variants: IntervalSet | None = None,
     excluded: IntervalSet | None = None,
-    expected_indels: tuple[int, ...] = (-10, -5, -2, -1, 1, 2, 5, 10),
+    expected_indels: tuple[int, ...] = DEFAULT_EXPECTED_INDELS,
     name: str | None = None,
 ) -> GenotypingDesign:
-    """Design a pair that brackets an edited site.
+    """Design a pair for genotyping, and say what its readout can resolve.
 
-    The protected window is both excluded from primer placement and required to
-    be spanned by the amplicon, which is what distinguishes this from simply
-    designing primers "near" the cut.
+    *targets*, when given, are regions the amplicon must span and no primer may
+    overlap -- the exon you disrupted, say. Give none and this is a plain design
+    over the whole template, which is the right answer when you do not know
+    where the lesion is: a wide amplicon that certainly contains it beats a
+    narrow one placed around a coordinate that might be wrong.
     """
-    site = CutSite(position=cut_site, strand="+") if isinstance(cut_site, int) else cut_site
-    geom = geometry or GenotypingGeometry()
-    geom.validate()
-
     n = len(template.seq)
-    if not 0 <= site.position <= n:
-        raise DesignError(f"cut site {site.position + 1} lies outside the template (1-{n})")
-
-    protected = Interval(
-        max(0, site.position - geom.protected), min(n, site.position + geom.protected)
-    )
-    f_lo = max(0, site.position - geom.max_flank)
-    f_hi = max(0, site.position - geom.min_flank)
-    r_lo = min(n, site.position + geom.min_flank)
-    r_hi = min(n, site.position + geom.max_flank)
-
-    if f_hi - f_lo < params.min_length:
-        raise DesignError(
-            f"only {max(0, f_hi - f_lo)} nt of template available 5' of the cut site; "
-            f"need at least {params.min_length} nt. Supply more flanking sequence or "
-            f"reduce --min-flank (currently {geom.min_flank})."
-        )
-    if r_hi - r_lo < params.min_length:
-        raise DesignError(
-            f"only {max(0, r_hi - r_lo)} nt of template available 3' of the cut site; "
-            f"need at least {params.min_length} nt. Supply more flanking sequence or "
-            f"reduce --min-flank (currently {geom.min_flank})."
-        )
+    targets = targets or IntervalSet()
+    for interval in targets:
+        if not (0 <= interval.start < interval.end <= n):
+            raise DesignError(
+                f"target {interval.start + 1}-{interval.end} lies outside the template (1-{n})"
+            )
 
     request = DesignRequest(
         template=template,
         params=params,
-        forward_search=IntervalSet([Interval(f_lo, f_hi)]),
-        reverse_search=IntervalSet([Interval(r_lo, r_hi)]),
-        targets=IntervalSet([protected]),
-        excluded=(excluded or IntervalSet()).union(IntervalSet([protected])),
+        targets=targets,
+        # A region worth interrogating is a region no primer may sit in: a
+        # primer inside the lesion does not amplify the mutant allele.
+        excluded=(excluded or IntervalSet()).union(targets),
         variants=variants or IntervalSet(),
         panel=panel,
         name=name or f"{template.name}_gt",
-        context={"assay": "genotyping", "cut_site": site.to_dict()},
+        context={"assay": "genotyping"},
     )
     result = run_design(request)
 
-    design = GenotypingDesign(
-        result=result, cut_site=site, geometry=geom, expected_indels=expected_indels
-    )
+    design = GenotypingDesign(result=result, expected_indels=expected_indels)
     if result.best:
         design.allele_sizes = predict_allele_sizes(result.best.product_size, expected_indels)
         unresolvable = [r["allele"] for r in design.allele_sizes if not r["resolvable_on_gel"]]

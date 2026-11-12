@@ -122,7 +122,7 @@ Short amplicons, a 1 °C pair Tm difference, strict structure limits. Combine wi
 
 ### `sanger` (500-1200 bp)
 
-Long enough that the read clears the primer and any indel before quality degrades. For a crispant with a possible large deletion, raise `--protected` well above your largest expected indel.
+Long enough that the read clears the primer and any indel before quality degrades. For a crispant with a possible large deletion, widen the product-size window rather than narrowing the region: the read has to reach past a lesion whose size you do not yet know.
 
 ### `amplicon-seq` (180-280 bp)
 
@@ -144,8 +144,8 @@ In practice ohnolog coding sequence is often too conserved for *any* probe over 
 
 A few numbers worth having in mind, which the defaults reflect:
 
-- **Protected window.** Set `--protected` above the **largest indel you expect**, not the one you got. The assay has to work before the alleles are known, and a primer inside a deleted span does not amplify the mutant allele at all. Large deletions — hundreds of base pairs or more — are common enough with a single guide, and routine with two.
-- **Primer distance from the cut.** Far enough that a Sanger read has cleared the primer and settled before reaching the lesion; close enough that the product size suits the readout. The `--min-flank` / `--max-flank` defaults (40 / 400) are a reasonable compromise for gel genotyping.
+- **Give the region, not the cut.** `--target` takes the span you need interrogated — the exon you disrupted, the window you edited. There is deliberately no cut-site input: large deletions, hundreds of base pairs or more, are common with a single guide and routine with two, so a primer placed a fixed distance from the predicted cut can land inside the deletion and silently fail to amplify the mutant allele. `docs/algorithm.md` sets out the reasoning.
+- **Widen the region when you are unsure, or give none.** A design across the whole template produces a wide amplicon that certainly contains the lesion, which beats a narrow one placed around a coordinate that may be wrong. Narrow it only when the readout forces you to — fragment analysis wants a short product, and a short product cannot span a wide region.
 - **Knock-in junction PCR.** One primer **must** sit in genomic sequence outside the homology arm. A pair with both primers in the cassette amplifies the donor plasmid just as happily as the integrated allele — the classic false positive in knock-in screening. `--homology-arm` keeps primers clear of the arm.
 - **Founder screening.** G0 injected animals are mosaic, so a genotyping assay there reports a mixture. Design for the F1, and treat G0 results as presence/absence of editing rather than a genotype.
 
