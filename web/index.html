@@ -330,7 +330,8 @@ footer p { margin: 5px 0; max-width: 80ch; }
         <li><strong>Design</strong> — general-purpose, with target and exclude regions</li>
         <li><strong>Check</strong> — grade primers you already ordered</li>
       </ul>
-      <p>Pick a mode and press <em>load example</em> to see it work on a bundled <strong>synthetic</strong> ohnolog pair — built to contain the hard cases, but not real zebrafish sequence, so <code>demogenea</code> is not a gene you can look up.</p>
+      <p>Press <em>load example</em> in <strong>design</strong> for 1 kb of real <em>Danio rerio</em> sequence: chr18:3,405,001–3,406,000 on danRer11, inside <em>myo7aa</em> — the <em>mariner</em> gene, where the target is set over the real RefSeq exon the window contains. Repeat-masked bases are in lower case, which is most of the reason zebrafish is hard.</p>
+      <p>The other modes load a bundled <strong>synthetic</strong> ohnolog pair, because they need a planted protospacer, a variant, or a spliced transcript that the real 1 kb window cannot supply. <code>demogenea</code> is not a gene you can look up.</p>
       <p><strong>Working on a real gene?</strong> Paste its sequence into the box, or get it with the command-line version, which fetches by name:</p>
       <pre class="snippet">pip install danioprime
 danioprime fetch myo7aa --flank 2000 --out myo7aa_locus.fa</pre>
@@ -662,14 +663,19 @@ async function loadDemo(mode, btn) {
   const was = btn.textContent;
   btn.textContent = "loading…";
   try {
-    if (mode === "genotype" || mode === "design" || mode === "dcaps") {
+    if (mode === "design") {
+      // Real sequence: 1 kb of Danio rerio chr18 at myo7aa (danRer11), with the
+      // target set over the real RefSeq exon it contains. No avoid panel,
+      // because the synthetic ohnolog is not myo7aa's and pairing them would
+      // be a lie about what the discrimination is doing.
+      $("x-template").value = await fetchExample("myo7aa_locus.fa");
+      $("x-avoid").value = ""; $("x-targets").value = "591-767";
+    } else if (mode === "genotype" || mode === "dcaps") {
       const [a, b] = await Promise.all([fetchExample("demogenea_locus.fa"), fetchExample("demogeneb_locus.fa")]);
       if (mode === "genotype") {
         $("g-template").value = a; $("g-avoid").value = b;
         $("g-proto").value = "AAGCCCTGTTATGTGCAACG"; $("g-protected").value = 60;
         $("g-preset").value = "genotyping-gel";
-      } else if (mode === "design") {
-        $("x-template").value = a; $("x-avoid").value = b; $("x-targets").value = "1700-1800";
       } else {
         $("d-template").value = a; $("d-pos").value = 1768; $("d-base").value = "C";
         $("d-preset").value = "genotyping-gel";

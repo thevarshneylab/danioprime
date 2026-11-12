@@ -1,0 +1,9 @@
+#!genome-build danRer11
+#!genome-build-accession GCA_000002035.4
+# Real Danio rerio annotation: myo7aa / NM_152983, exon 24 of 48.
+# Coordinates are within myo7aa_locus.fa (window chr18:3405001-3406000).
+# The gene is on the MINUS strand, so this window's single exon is the 24th in
+# transcript order counting from the 5' end, and the flanking intron boundaries
+# read AC and CT on the plus strand -- the reverse complement of GT..AG.
+# Source: UCSC refGene, retrieved 2026-11-12.
+myo7aa_locus	UCSC_refGene	exon	591	767	.	-	.	gene_id "ENSDARG00000099871"; transcript_id "NM_152983"; gene_name "myo7aa"; exon_number "24"; transcript_biotype "protein_coding";

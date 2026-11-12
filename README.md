@@ -49,7 +49,22 @@ danioprime genotype --template myo7aa_locus.fa --assembly GRCz11 \
 
 `examples/myo7aa.sh` runs the whole thing — locus, transcript, ohnolog panel, genotyping, in situ probe, qPCR — against the real gene. *myo7aa* is the **mariner** gene: zebrafish myosin VIIAa, orthologue of human *MYO7A*, where mutations cause Usher syndrome type 1B. Ernest et al. (2000) showed *mariner* mutants have defective sensory hair cells, making it the first fish model of human hereditary deafness. It is a reasonable example here because it has an ohnolog, it is large enough to be realistic, and the high-throughput CRISPR screen whose M13-tailed fluorescent-PCR genotyping this tool implements — Varshney et al. (2015), *Genome Res* 25:1030–42 — is among the publications ZFIN lists for it.
 
-> **The files in `examples/` are synthetic**, and named so that they cannot be mistaken for real genes (`demogenea`, `demogeneb`). They exist so the tests and the browser demo run offline and deterministically, and they are built to contain the hard cases — a 94%-identical ohnolog, a conserved exon block, strain variants in an otherwise attractive primer site. They are not a model of what your input looks like. For that, use `fetch`.
+### One real locus, checked in
+
+`examples/myo7aa_locus.fa` is **real zebrafish sequence**: 1,000 bp of chromosome 18 on danRer11, `chr18:3,405,001–3,406,000`, inside *myo7aa*. `examples/myo7aa.gtf` carries the real RefSeq exon that sits in it.
+
+```bash
+danioprime design --template examples/myo7aa_locus.fa --target 679 \
+    --preset genotyping-gel --tails fluorescent
+```
+
+It is worth having checked in because it shows two things synthetic sequence cannot. It is 40% GC, because this genome is AT-rich — so the Tm window a human-tuned tool would give you is the wrong one. And **41% of it is repeat-masked**, in lower case, which is the single most common reason a zebrafish primer that looks perfect does not work.
+
+The provenance is in the header, and the tests check the sequence *against the annotation* rather than against a stored copy of itself: *myo7aa* is on the minus strand, so each intron's canonical GT…AG reads as AC and CT on the plus strand, and those dinucleotides have to land exactly where the GTF says the boundaries are. Drop a base, shift the window, edit the coordinates, or paste in a synthetic sequence behind the same header, and that check fails.
+
+It is a 1 kb window rather than the whole 96 kb gene, so it suits `design`, `genotype` and `dcaps` but has only one exon — not enough for a spliced transcript. For the full locus or the cDNA, `fetch` it.
+
+> **Everything else in `examples/` is synthetic**, and named so that it cannot be mistaken for a real gene (`demogenea`, `demogeneb`). It exists so the tests and the browser demo run offline and deterministically, and it is built to contain the hard cases — a 94%-identical ohnolog, a conserved exon block, strain variants in an otherwise attractive primer site. Every one of those headers says SYNTHETIC, and a test asserts it.
 
 ---
 

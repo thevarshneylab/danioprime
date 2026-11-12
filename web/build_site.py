@@ -35,6 +35,8 @@ EXAMPLES = ROOT / "examples"
 
 #: Example files the page offers through its "load example" buttons.
 BUNDLED = (
+    # The one real locus: 1 kb of Danio rerio chr18 (danRer11) at myo7aa.
+    "myo7aa_locus.fa",
     "demogenea_locus.fa",
     "demogeneb_locus.fa",
     "demogenea_transcript.fa",

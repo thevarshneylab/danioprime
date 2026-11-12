@@ -6,6 +6,30 @@ All notable changes to this project are documented here, following
 
 ## [Unreleased]
 
+### Added — a real zebrafish locus, checked in
+
+- `examples/myo7aa_locus.fa` is **real sequence**: 1,000 bp of *Danio rerio*
+  chromosome 18 on danRer11, `chr18:3,405,001-3,406,000`, inside *myo7aa* — the
+  *mariner* gene. `examples/myo7aa.gtf` carries the real RefSeq exon in it
+  (NM_152983, exon 24 of 48). Retrieved from the UCSC Genome Browser API; the
+  provenance is in the FASTA header.
+- It earns its place by showing two things synthetic sequence cannot: this
+  window is 40% GC, because the genome is AT-rich, and **41% of it is
+  repeat-masked** — the most common reason a zebrafish primer that looks
+  perfect does not work.
+- `tests/test_real_locus.py` checks the sequence *against its annotation*
+  rather than against a stored copy. *myo7aa* is on the minus strand, so each
+  intron's canonical GT..AG reads as AC and CT on the plus strand, and those
+  dinucleotides must land exactly where the GTF puts the boundaries. A dropped
+  base, a shifted window, an edited coordinate, or synthetic sequence pasted in
+  behind the same header all fail it.
+- The browser demo's **design** tab now loads this locus, with the target over
+  the real exon. The other tabs stay on synthetic data, which they need for a
+  planted protospacer, a variant, or a spliced transcript; every synthetic
+  header says SYNTHETIC and a test asserts it.
+- It is a 1 kb window, not the whole 96 kb gene, so it has one exon and no
+  spliced transcript. For those, `fetch`.
+
 ### Added — real sequence, by gene name
 
 - **`danioprime fetch`** retrieves a locus or a spliced transcript from Ensembl

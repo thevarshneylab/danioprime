@@ -116,7 +116,19 @@ print(f"  why this rank: {best['penalty_terms']}")
 print(f"  cut site: {d['cut_site']['description']}")
 PY
 
+hr "9. Real zebrafish sequence: 1 kb inside myo7aa on danRer11"
+# Everything above ran on synthetic sequence. This block does not: it is
+# chr18:3,405,001-3,406,000, and the target is the real RefSeq exon in it.
+# Note the repeat-masked (lower case) stretches in the template -- 41% of this
+# window -- which is the most common reason a zebrafish primer fails.
+danioprime design \
+    --template myo7aa_locus.fa \
+    --target 679 \
+    --preset genotyping-gel \
+    --tails fluorescent \
+    --show 2
+
 printf '\n\033[1mDone.\033[0m See docs/zebrafish-notes.md for the reasoning behind the presets.\n'
-printf 'This ran on the synthetic dataset -- not real zebrafish sequence. For the\n'
-printf 'same workflow on a real gene: bash myo7aa.sh (fetches myo7aa from Ensembl,\n'
-printf 'so it needs network access).\n'
+printf 'Blocks 1-8 ran on synthetic sequence; block 9 ran on 1 kb of real chr18.\n'
+printf 'For the whole workflow on the full myo7aa gene and its cDNA, run\n'
+printf 'bash myo7aa.sh -- it fetches them from Ensembl, so it needs network access.\n'
