@@ -57,9 +57,9 @@ jobs:
         run: |
           # $RUNNER_TEMP works on Linux, macOS and Windows runners alike.
           cd examples
-          cp kcnh6a_locus.fa "$RUNNER_TEMP/before.fa"
+          cp demogenea_locus.fa "$RUNNER_TEMP/before.fa"
           python make_example_data.py
-          diff -q "$RUNNER_TEMP/before.fa" kcnh6a_locus.fa
+          diff -q "$RUNNER_TEMP/before.fa" demogenea_locus.fa
 
       - name: CLI smoke test
         shell: bash
@@ -68,9 +68,9 @@ jobs:
           danioprime info
           danioprime presets
           danioprime genotype \
-            --template examples/kcnh6a_locus.fa \
+            --template examples/demogenea_locus.fa \
             --protospacer AAGCCCTGTTATGTGCAACG \
-            --avoid examples/kcnh6b_locus.fa \
+            --avoid examples/demogeneb_locus.fa \
             --preset genotyping-gel --show 2
 
   web-build:
@@ -122,9 +122,9 @@ jobs:
         run: pytest -q
       - name: Both backends agree on a design
         run: |
-          danioprime design --template examples/kcnh6a_locus.fa --preset qpcr \
+          danioprime design --template examples/demogenea_locus.fa --preset qpcr \
             --thermo-backend builtin --format tsv --out builtin.tsv
-          danioprime design --template examples/kcnh6a_locus.fa --preset qpcr \
+          danioprime design --template examples/demogenea_locus.fa --preset qpcr \
             --thermo-backend primer3 --format tsv --out primer3.tsv
           echo "--- builtin ---"; head -3 builtin.tsv
           echo "--- primer3 ---"; head -3 primer3.tsv
@@ -154,11 +154,11 @@ jobs:
           from danioprime.specificity.scan import find_binding_sites
           import subprocess, tempfile, os
 
-          rec = read_single_fasta("examples/kcnh6b_locus.fa")
+          rec = read_single_fasta("examples/demogeneb_locus.fa")
           tmp = tempfile.mkdtemp()
           db = os.path.join(tmp, "db")
           subprocess.run(
-              ["makeblastdb", "-in", "examples/kcnh6b_locus.fa", "-dbtype", "nucl", "-out", db],
+              ["makeblastdb", "-in", "examples/demogeneb_locus.fa", "-dbtype", "nucl", "-out", db],
               check=True, capture_output=True,
           )
           primer = rec.seq[1500:1520]

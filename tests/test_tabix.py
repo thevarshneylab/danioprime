@@ -197,9 +197,17 @@ class TestIndex:
 class TestAgainstHtslib:
     """The claim that matters: identical answers to htslib."""
 
-    @staticmethod
     @pytest.fixture(scope="class")
-    def truth(vcf):
+    @classmethod
+    def truth(cls, vcf):
+        """The htslib reader the pure-Python one is measured against.
+
+        The decorator order matters: @pytest.fixture has to be outermost, and a
+        class-scoped fixture has to be a classmethod. Written as a staticmethod
+        above the fixture decorator, pytest warned and treated it as a plain
+        function -- the comparison these tests exist for was at risk of not
+        running at all.
+        """
         return pysam.TabixFile(str(vcf))
 
     @staticmethod
