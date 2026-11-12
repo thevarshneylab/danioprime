@@ -6,6 +6,49 @@ All notable changes to this project are documented here, following
 
 ## [Unreleased]
 
+### Added — real sequence, by gene name
+
+- **`danioprime fetch`** retrieves a locus or a spliced transcript from Ensembl
+  (or by coordinates from UCSC), so a design starts from a gene name rather
+  than from hunting for a FASTA:
+
+  ```bash
+  danioprime fetch myo7aa --flank 2000 --out myo7aa_locus.fa
+  danioprime fetch myo7aa --transcript --out myo7aa_cdna.fa
+  ```
+
+- The FASTA header records **the assembly the server reported** — never one
+  assumed here — with the coordinates, the source URL and the date. That is
+  what lets the variant guard refuse a set on another assembly instead of
+  misapplying it, and what makes a primer ordered six months ago retraceable.
+- Every response is validated before it can become a file: exact span length,
+  nucleotides only. A truncated response or an HTML error page raises rather
+  than producing a locus that looks fine and is the wrong piece of DNA.
+- `--dry-run` prints the URLs it would request and fetches nothing, which also
+  names the hosts to allow through a restrictive proxy. `--base-url` points at
+  an Ensembl mirror or a local REST install. Chromosome naming is translated
+  per service (`chr18` ↔ `18`, `chrM` ↔ `MT`) and so is UCSC's 0-based
+  half-open coordinate system.
+- **`examples/myo7aa.sh`** runs the whole workflow on the real gene: locus,
+  transcript, ohnolog panel, genotyping, in situ probe, qPCR. *myo7aa* is the
+  *mariner* gene — the orthologue of human *MYO7A*, and the first fish model of
+  human hereditary deafness (Ernest et al. 2000).
+
+### Changed — the example data no longer impersonates real genes
+
+- The synthetic dataset was named after `kcnh6a`/`kcnh6b`, which are real
+  zebrafish genes. Invented bases in a file named after a real gene is an
+  impersonation that survives until someone BLASTs it, so the pair is now
+  `demogenea`/`demogeneb` and every header says SYNTHETIC. The `a`/`b` suffix
+  stays, because that is what the ohnolog logic keys on.
+- The dataset keeps its job — offline, deterministic tests and a browser demo
+  that needs no network — and the README now says plainly that it is not a
+  model of what your input looks like.
+- The browser demo says the same, and shows the `fetch` command for real work.
+  The page cannot fetch for itself: it is the real package compiled to
+  WebAssembly, which has no sockets. That is also why nothing pasted there
+  leaves the machine.
+
 ### Added — a tail you can see
 
 - A 5' tail is now written in **lower case** wherever a human reads it, and

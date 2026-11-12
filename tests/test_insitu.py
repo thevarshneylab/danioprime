@@ -41,8 +41,8 @@ def ohnolog_transcripts():
     target = left + middle + right
     paralog = mutate(left, 0.35, 1) + mutate(middle, 0.04, 2) + mutate(right, 0.35, 3)
     return (
-        SeqRecord(name="kcnh6a", seq=target),
-        ParalogPanel.from_records([SeqRecord(name="kcnh6b", seq=paralog)]),
+        SeqRecord(name="demogenea", seq=target),
+        ParalogPanel.from_records([SeqRecord(name="demogeneb", seq=paralog)]),
         (700, 1600),
     )
 

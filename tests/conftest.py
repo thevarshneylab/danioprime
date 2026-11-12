@@ -58,7 +58,7 @@ def panel(ohnolog_pair) -> ParalogPanel:
 
 @pytest.fixture
 def example_dir() -> Path:
-    if not (EXAMPLES / "kcnh6a_locus.fa").exists():
+    if not (EXAMPLES / "demogenea_locus.fa").exists():
         pytest.skip("example data not generated; run examples/make_example_data.py")
     return EXAMPLES
 

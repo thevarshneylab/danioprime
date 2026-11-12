@@ -21,12 +21,12 @@ PROTOSPACER = "AAGCCCTGTTATGTGCAACG"
 
 @pytest.fixture
 def locus(example_dir):
-    return read_single_fasta(example_dir / "kcnh6a_locus.fa")
+    return read_single_fasta(example_dir / "demogenea_locus.fa")
 
 
 @pytest.fixture
 def ohnolog_panel(example_dir):
-    return ParalogPanel.from_fasta(str(example_dir / "kcnh6b_locus.fa"))
+    return ParalogPanel.from_fasta(str(example_dir / "demogeneb_locus.fa"))
 
 
 class TestExampleData:
@@ -39,9 +39,9 @@ class TestExampleData:
     def test_gtf_matches_the_transcript(self, example_dir):
         from danioprime.annotation.gtf import read_annotation
 
-        txs = read_annotation(example_dir / "kcnh6a.gtf")
-        tx = txs["kcnh6a-201"]
-        transcript = read_single_fasta(example_dir / "kcnh6a_transcript.fa")
+        txs = read_annotation(example_dir / "demogenea.gtf")
+        tx = txs["demogenea-201"]
+        transcript = read_single_fasta(example_dir / "demogenea_transcript.fa")
         assert tx.spliced_length == len(transcript.seq)
         assert tx.junction_offsets() == (210, 540)
 
@@ -108,8 +108,8 @@ class TestExampleWorkflow:
                 assert not assess_primer(primer.seq, ohnolog_panel).primes_on_panel
 
     def test_qpcr_on_the_example_transcript_finds_protected_pairs(self, example_dir):
-        transcript = read_single_fasta(example_dir / "kcnh6a_transcript.fa")
-        ohnolog = ParalogPanel.from_fasta(str(example_dir / "kcnh6b_transcript.fa"))
+        transcript = read_single_fasta(example_dir / "demogenea_transcript.fa")
+        ohnolog = ParalogPanel.from_fasta(str(example_dir / "demogeneb_transcript.fa"))
         design = design_qpcr(
             transcript,
             get_preset("qpcr").replace(max_pairs=5),
@@ -125,7 +125,7 @@ class TestExampleWorkflow:
 
         mask, variants = load_mask(
             example_dir / "strain_variants.vcf",
-            chrom="kcnh6a_locus",
+            chrom="demogenea_locus",
             samples=["TU"],
         )
         assert variants
@@ -137,11 +137,11 @@ class TestExampleWorkflow:
         from danioprime.variants.vcf import load_mask
 
         all_tu, _ = load_mask(
-            example_dir / "strain_variants.vcf", chrom="kcnh6a_locus", samples=["TU"]
+            example_dir / "strain_variants.vcf", chrom="demogenea_locus", samples=["TU"]
         )
         het_tu, _ = load_mask(
             example_dir / "strain_variants.vcf",
-            chrom="kcnh6a_locus",
+            chrom="demogenea_locus",
             samples=["TU"],
             heterozygous_only=True,
         )
@@ -160,8 +160,8 @@ class TestInSituExample:
     @pytest.fixture
     def transcripts(self, example_dir):
         return (
-            read_single_fasta(example_dir / "kcnh6a_transcript.fa"),
-            ParalogPanel.from_fasta(str(example_dir / "kcnh6b_transcript.fa")),
+            read_single_fasta(example_dir / "demogenea_transcript.fa"),
+            ParalogPanel.from_fasta(str(example_dir / "demogeneb_transcript.fa")),
         )
 
     #: Coding sequence ends here in the example transcript.

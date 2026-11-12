@@ -224,7 +224,7 @@ class TestQpcr:
         for i, (start, exon) in enumerate(zip(starts, (exon1, exon2, exon3), strict=True), 1):
             rows.append(
                 f'chr1\tx\texon\t{start + 1}\t{start + len(exon)}\t.\t+\t.\t'
-                f'gene_id "G"; transcript_id "tx"; gene_name "kcnh6a"; exon_number "{i}";\n'
+                f'gene_id "G"; transcript_id "tx"; gene_name "demogenea"; exon_number "{i}";\n'
             )
         gtf.write_text("".join(rows))
         return tx_path, gtf
@@ -247,7 +247,7 @@ class TestQpcr:
     def test_ohnolog_hint_is_emitted(self, transcript_files, capsys):
         tx, gtf = transcript_files
         main(["qpcr", "--transcript", str(tx), "--gtf", str(gtf), "--transcript-id", "tx"])
-        assert "kcnh6b" in capsys.readouterr().err
+        assert "demogeneb" in capsys.readouterr().err
 
     def test_unknown_transcript_is_reported(self, transcript_files, capsys):
         tx, gtf = transcript_files

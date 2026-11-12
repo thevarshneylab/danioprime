@@ -190,7 +190,7 @@ class TestQpcr:
             chrom="chr1",
             strand="+",
             exons=[Exon(1000, 1200, 1), Exon(5000, 5180, 2), Exon(9000, 9220, 3)],
-            gene_name="kcnh6a",
+            gene_name="demogenea",
         )
 
     def test_junction_offsets_and_intron_sizes(self, transcript_model):
@@ -522,11 +522,11 @@ class TestTails:
 class TestAnnotation:
     GTF = (
         'chr5\tx\texon\t1001\t1200\t.\t+\t.\tgene_id "G1"; transcript_id "T1"; '
-        'gene_name "kcnh6a"; transcript_biotype "protein_coding";\n'
+        'gene_name "demogenea"; transcript_biotype "protein_coding";\n'
         'chr5\tx\texon\t2001\t2150\t.\t+\t.\tgene_id "G1"; transcript_id "T1"; '
-        'gene_name "kcnh6a"; transcript_biotype "protein_coding";\n'
+        'gene_name "demogenea"; transcript_biotype "protein_coding";\n'
         'chr9\tx\texon\t500\t700\t.\t-\t.\tgene_id "G2"; transcript_id "T2"; '
-        'gene_name "kcnh6b";\n'
+        'gene_name "demogeneb";\n'
     )
 
     def test_gtf_parsing(self):
@@ -541,7 +541,7 @@ class TestAnnotation:
 
     def test_lookup_by_symbol_and_id(self):
         txs = parse_annotation(self.GTF.splitlines())
-        assert [t.transcript_id for t in find_transcripts(txs, "kcnh6a")] == ["T1"]
+        assert [t.transcript_id for t in find_transcripts(txs, "demogenea")] == ["T1"]
         assert [t.transcript_id for t in find_transcripts(txs, "T2")] == ["T2"]
 
     def test_canonical_prefers_protein_coding_then_length(self):
@@ -549,8 +549,8 @@ class TestAnnotation:
         assert canonical_transcript(txs.values()).transcript_id == "T1"
 
     def test_ohnolog_symbol_inference(self):
-        assert guess_ohnolog_symbol("kcnh6a") == "kcnh6b"
-        assert guess_ohnolog_symbol("kcnh6b") == "kcnh6a"
+        assert guess_ohnolog_symbol("demogenea") == "demogeneb"
+        assert guess_ohnolog_symbol("demogeneb") == "demogenea"
         assert guess_ohnolog_symbol("tp53") is None
         assert guess_ohnolog_symbol("a") is None
 

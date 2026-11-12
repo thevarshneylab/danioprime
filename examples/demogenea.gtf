@@ -1,0 +1,5 @@
+#!genome-build mock-GRCz12tu-like
+# coordinates are within demogenea_locus.fa, not a real genome
+demogenea_locus	mock	exon	601	810	.	+	.	gene_id "ENSDARGMOCK001"; transcript_id "demogenea-201"; gene_name "demogenea"; exon_number "1"; transcript_biotype "protein_coding";
+demogenea_locus	mock	exon	1711	2040	.	+	.	gene_id "ENSDARGMOCK001"; transcript_id "demogenea-201"; gene_name "demogenea"; exon_number "2"; transcript_biotype "protein_coding";
+demogenea_locus	mock	exon	3141	3720	.	+	.	gene_id "ENSDARGMOCK001"; transcript_id "demogenea-201"; gene_name "demogenea"; exon_number "3"; transcript_biotype "protein_coding";

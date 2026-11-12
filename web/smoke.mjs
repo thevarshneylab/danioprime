@@ -41,7 +41,7 @@ const CASES = [
     name: "genotype",
     payload: () => ({
       mode: "genotype", preset: "genotyping-gel", overrides: { max_pairs: "2" },
-      template: read("kcnh6a_locus.fa"), avoid: read("kcnh6b_locus.fa"),
+      template: read("demogenea_locus.fa"), avoid: read("demogeneb_locus.fa"),
       protospacer: "AAGCCCTGTTATGTGCAACG", nuclease: "SpCas9",
       protected: "60", min_flank: "40", max_flank: "400", tails: "fluorescent",
     }),
@@ -57,7 +57,7 @@ const CASES = [
     name: "qpcr",
     payload: () => ({
       mode: "qpcr", preset: "qpcr", overrides: {},
-      template: read("kcnh6a_transcript.fa"), avoid: read("kcnh6b_transcript.fa"),
+      template: read("demogenea_transcript.fa"), avoid: read("demogeneb_transcript.fa"),
       junctions: [210, 540], require_junction_spanning: true, junction_flank: "60",
     }),
     expect: (r) => {
@@ -72,7 +72,7 @@ const CASES = [
     payload: () => ({
       mode: "dcaps", preset: "genotyping-gel",
       overrides: { min_product_size: "150", max_product_size: "450" },
-      template: read("kcnh6a_locus.fa"), variant_position: "1768", variant_base: "C",
+      template: read("demogenea_locus.fa"), variant_position: "1768", variant_base: "C",
       cut_allele: "variant", max_introduced_mismatches: "2",
     }),
     expect: (r) => (r.tables?.[0]?.rows?.length ? null : "no dCAPS assays"),
@@ -83,7 +83,7 @@ const CASES = [
       mode: "insitu", preset: "insitu-probe",
       overrides: { min_product_size: "400", opt_product_size: "500",
                    max_product_size: "700", max_pairs: "2" },
-      template: read("kcnh6a_transcript.fa"), avoid: read("kcnh6b_transcript.fa"),
+      template: read("demogenea_transcript.fa"), avoid: read("demogeneb_transcript.fa"),
       scheme: "riboprobe-dual-t7-sp6",
     }),
     expect: (r) => {
@@ -108,7 +108,7 @@ const CASES = [
     name: "design",
     payload: () => ({
       mode: "design", preset: "default", overrides: { max_pairs: "2" },
-      template: read("kcnh6a_locus.fa"), avoid: "", targets: "1700-1800",
+      template: read("demogenea_locus.fa"), avoid: "", targets: "1700-1800",
       excludes: "", tails: "none",
     }),
     expect: (r) => (r.pairs.length ? null : "no pairs"),
@@ -120,7 +120,7 @@ const CASES = [
       // This reverse primer sits in the block conserved with the ohnolog, so a
       // correct run must flag it as priming on the panel.
       primers: "R_conserved=CTATCTGTATGCCGCGATG",
-      avoid: read("kcnh6b_locus.fa"),
+      avoid: read("demogeneb_locus.fa"),
     }),
     expect: (r) => {
       const panel = r.tables.find((t) => /avoid-panel/.test(t.title));
@@ -190,7 +190,7 @@ for (const c of CASES) {
 // the page has no other way to tell the user what went wrong.
 const bad = call({
   mode: "genotype",
-  template: read("kcnh6a_locus.fa"),
+  template: read("demogenea_locus.fa"),
   protospacer: "A".repeat(20),
 });
 if (bad.ok || !bad.error || bad.error.includes("Traceback")) {

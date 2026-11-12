@@ -35,10 +35,10 @@ EXAMPLES = ROOT / "examples"
 
 #: Example files the page offers through its "load example" buttons.
 BUNDLED = (
-    "kcnh6a_locus.fa",
-    "kcnh6b_locus.fa",
-    "kcnh6a_transcript.fa",
-    "kcnh6b_transcript.fa",
+    "demogenea_locus.fa",
+    "demogeneb_locus.fa",
+    "demogenea_transcript.fa",
+    "demogeneb_transcript.fa",
 )
 
 NOJEKYLL_NOTE = (

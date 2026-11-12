@@ -132,7 +132,7 @@ class TestIndexHtml:
         from danioprime.assays.genotyping import locate_protospacer
         from danioprime.sequence import read_single_fasta
 
-        locus = read_single_fasta(ROOT / "examples" / "kcnh6a_locus.fa")
+        locus = read_single_fasta(ROOT / "examples" / "demogenea_locus.fa")
         sites = locate_protospacer(locus.seq, match.group(1))
         assert len(sites) == 1, (
             f"the demo protospacer matches {len(sites)} sites in the demo locus"

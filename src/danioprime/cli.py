@@ -15,6 +15,7 @@ these thermodynamic properties".
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -48,7 +49,8 @@ from .assays.tails import (
 from .config import PRESET_DESCRIPTIONS, DesignParams, get_preset
 from .design.pipeline import DesignRequest, DesignResult, run_design
 from .design.regions import IntervalSet, parse_interval
-from .errors import DanioPrimeError
+from .errors import DanioPrimeError, RegionError
+from .genome.remote import PROVIDERS
 from .report.colour import should_colour
 from .report.writers import (
     emit,
@@ -60,7 +62,14 @@ from .report.writers import (
     write_order_sheet,
     write_tsv,
 )
-from .sequence import IndexedFasta, SeqRecord, load_sequence, read_fasta, soft_mask_runs
+from .sequence import (
+    IndexedFasta,
+    SeqRecord,
+    load_sequence,
+    read_fasta,
+    soft_mask_runs,
+    write_fasta,
+)
 from .specificity.external import available_aligners
 from .specificity.paralog import ParalogPanel, assess_pair, assess_primer
 from .thermo.backend import BACKEND_NAMES, primer3_available
@@ -727,7 +736,6 @@ def cmd_dcaps(args: argparse.Namespace) -> int:
     }
 
     if args.format == "json":
-        import json
 
         emit(json.dumps(payload, indent=2), args.out)
     elif args.format == "tsv":
@@ -796,7 +804,6 @@ def cmd_dcaps(args: argparse.Namespace) -> int:
         emit("\n".join(lines), args.out)
 
     if args.json_out:
-        import json
 
         Path(args.json_out).write_text(json.dumps(payload, indent=2) + "\n", newline="\n")
     return 0 if assays else 1
@@ -832,7 +839,6 @@ def cmd_junction(args: argparse.Namespace) -> int:
         chunks.append("")
     emit("\n".join(chunks), args.out)
     if args.json_out:
-        import json
 
         from .report.writers import result_to_dict
 
@@ -1040,6 +1046,88 @@ def cmd_check(args: argparse.Namespace) -> int:
                 lines.append("No product predicted on the avoid-panel.")
 
     emit("\n".join(lines), args.out)
+    return 0
+
+
+def cmd_fetch(args: argparse.Namespace) -> int:
+    """Pull a real locus or transcript out of Ensembl or UCSC."""
+    from .genome.remote import FetchPlan, fetch_locus, fetch_transcript
+
+    plan = FetchPlan() if args.dry_run else None
+    kwargs: dict[str, Any] = {
+        "species": args.species,
+        "transport": None,
+        "timeout": args.timeout,
+        "plan": plan,
+        "base_url": args.base_url,
+    }
+
+    if args.transcript:
+        locus = fetch_transcript(args.target, kind=args.transcript_type, **kwargs)
+    else:
+        chrom = start = end = None
+        parsed_chrom, interval = (None, None)
+        try:
+            parsed_chrom, interval = parse_interval(args.target)
+        except RegionError:
+            pass
+        if interval is not None:
+            if parsed_chrom is None:
+                raise RegionError(
+                    f"{args.target!r} needs a contig to be fetched as a region, "
+                    f"e.g. chr18:{args.target}"
+                )
+            # parse_interval hands back half-open zero-based; Ensembl and this
+            # module both speak 1-based inclusive.
+            chrom, start, end = parsed_chrom, interval.start + 1, interval.end
+        locus = fetch_locus(
+            args.target,
+            source=args.source,
+            genome=args.assembly,
+            flank=args.flank,
+            chrom=chrom,
+            start=start,
+            end=end,
+            **kwargs,
+        )
+
+    if plan is not None:
+        lines = ["Would request:", *(f"  {url}" for url in plan.urls)]
+        if locus.chrom and not locus.is_transcript:
+            lines += ["", f"Region: {locus.region} on {locus.assembly or 'the server default'}"]
+        lines.append("")
+        lines.append("Nothing was fetched and nothing was written (--dry-run).")
+        # Deliberately stdout, not --out: --out names where the FASTA goes, and
+        # a dry run that overwrote it with a list of URLs would be a poor way
+        # to find out what --dry-run means.
+        emit("\n".join(lines), None)
+        return 0
+
+    record = locus.to_record()
+    if args.format == "json":
+        emit(json.dumps(locus.to_dict(), indent=2), args.out)
+        return 0
+
+    if args.out:
+        write_fasta([record], args.out)
+        summary = [
+            f"wrote {args.out}: {record.name}, {len(locus.seq):,} bp",
+            f"  {locus.header()}",
+        ]
+        if not locus.is_transcript:
+            summary += [
+                "",
+                "Pass this to a design command with the assembly it is on, so that a",
+                "variant set on another assembly is refused rather than misapplied:",
+                "",
+                f"  danioprime genotype --template {args.out} \\",
+                f"      --assembly {locus.assembly} --variant-source nhgri1",
+            ]
+        print("\n".join(summary))
+        return 0
+
+    wrapped = "\n".join(record.seq[i : i + 60] for i in range(0, len(record.seq), 60))
+    emit(f">{record.name} {record.description}\n{wrapped}", None)
     return 0
 
 
@@ -1332,6 +1420,57 @@ def build_parser() -> argparse.ArgumentParser:
     _add_specificity_args(p)
     p.add_argument("--out", "-o", help="write the report here instead of stdout")
     p.set_defaults(func=cmd_check)
+
+    # --- fetching real sequence -------------------------------------------
+    p = sub.add_parser(
+        "fetch",
+        help="fetch a real locus or transcript by gene symbol or region",
+        description=(
+            "Fetch sequence from Ensembl or UCSC so a design runs against the real "
+            "locus. The FASTA header records the assembly the server reported, the "
+            "coordinates, the source URL and the date, which is what lets a variant "
+            "set on another assembly be refused rather than misapplied."
+        ),
+    )
+    p.add_argument(
+        "target",
+        help="gene symbol (myo7aa), a region (chr18:1,000,000-1,010,000), or an Ensembl ID",
+    )
+    p.add_argument("--species", default="danio_rerio", help="Ensembl species name")
+    p.add_argument(
+        "--source", choices=PROVIDERS, default="ensembl",
+        help="ensembl resolves gene symbols; ucsc serves a named assembly by coordinates",
+    )
+    p.add_argument(
+        "--assembly", default="danRer11",
+        help="UCSC genome to fetch from (--source ucsc); ignored for Ensembl, which "
+             "reports its own",
+    )
+    p.add_argument(
+        "--flank", type=int, default=2000,
+        help="bases to add on each side of a gene, so primers have somewhere to sit",
+    )
+    p.add_argument(
+        "--transcript", action="store_true",
+        help="fetch the canonical spliced transcript instead of the genomic locus "
+             "(for qPCR and in situ probes)",
+    )
+    p.add_argument(
+        "--transcript-type", default="cdna", choices=("cdna", "cds", "protein"),
+        help="what --transcript returns",
+    )
+    p.add_argument("--timeout", type=float, default=30.0)
+    p.add_argument(
+        "--base-url", default="",
+        help="override the service root, e.g. a local Ensembl REST mirror",
+    )
+    p.add_argument(
+        "--dry-run", action="store_true",
+        help="print the URLs that would be requested, fetch nothing, write nothing",
+    )
+    p.add_argument("--format", choices=("fasta", "json"), default="fasta")
+    p.add_argument("--out", "-o", help="write the FASTA here instead of stdout")
+    p.set_defaults(func=cmd_fetch)
 
     # --- informational ----------------------------------------------------
     p = sub.add_parser(

@@ -20,6 +20,39 @@ Pure Python, no required dependencies. Optional extras: `pip install "danioprime
 
 ---
 
+## Start with a real gene
+
+`danioprime fetch` pulls the locus from Ensembl, so the first step is a gene name rather than hunting for a FASTA:
+
+```bash
+danioprime fetch myo7aa --flank 2000 --out myo7aa_locus.fa
+danioprime fetch myo7aa --transcript --out myo7aa_cdna.fa
+```
+
+```
+wrote myo7aa_locus.fa: myo7aa, <N> bp
+  <assembly> <chr>:<start>-<end> | strand + | <N> bp | gene +/- 2,000 bp |
+  ENSDARG00000099871 | myosin VIIAa | via Ensembl REST | retrieved 2026-11-12
+```
+
+(The assembly, contig and coordinates are whatever Ensembl serves for the release you fetch from, which is why they are not written out here.)
+
+The header is the point. It records **the assembly the server reported** — never one assumed here — along with the coordinates, the source and the date, because a template whose assembly is unknown cannot be checked against a variant set, a GTF, or a primer you ordered six months ago. Pass it on and a variant set on another assembly is refused rather than misapplied:
+
+```bash
+danioprime genotype --template myo7aa_locus.fa --assembly GRCz11 \
+    --protospacer <your guide> --preset genotyping-fluorescent \
+    --tails fluorescent --variant-source nhgri1
+```
+
+`--dry-run` prints the URLs it would request and fetches nothing, which is the quickest way to find out what to allow through a restrictive proxy. `--source ucsc` fetches by coordinates from a named assembly instead, for when you need danRer11 specifically; `--base-url` points at a mirror or a local Ensembl REST install.
+
+`examples/myo7aa.sh` runs the whole thing — locus, transcript, ohnolog panel, genotyping, in situ probe, qPCR — against the real gene. *myo7aa* is the **mariner** gene: zebrafish myosin VIIAa, orthologue of human *MYO7A*, where mutations cause Usher syndrome type 1B. Ernest et al. (2000) showed *mariner* mutants have defective sensory hair cells, making it the first fish model of human hereditary deafness. It is a reasonable example here because it has an ohnolog, it is large enough to be realistic, and the high-throughput CRISPR screen whose M13-tailed fluorescent-PCR genotyping this tool implements — Varshney et al. (2015), *Genome Res* 25:1030–42 — is among the publications ZFIN lists for it.
+
+> **The files in `examples/` are synthetic**, and named so that they cannot be mistaken for real genes (`demogenea`, `demogeneb`). They exist so the tests and the browser demo run offline and deterministically, and they are built to contain the hard cases — a 94%-identical ohnolog, a conserved exon block, strain variants in an otherwise attractive primer site. They are not a model of what your input looks like. For that, use `fetch`.
+
+---
+
 ## Why a zebrafish-specific tool
 
 ### 1. The teleost genome duplication
@@ -29,18 +62,18 @@ Zebrafish retain thousands of ohnolog pairs from the teleost-specific whole-geno
 `danioprime` asks the question directly:
 
 ```bash
-danioprime genotype --template kcnh6a_locus.fa \
+danioprime genotype --template demogenea_locus.fa \
                     --protospacer AAGCCCTGTTATGTGCAACG \
-                    --avoid kcnh6b_locus.fa
+                    --avoid demogeneb_locus.fa
 ```
 
 ```
-  kcnh6a_locus_gt_p1  314 bp  penalty 1.93
+  demogenea_locus_gt_p1  314 bp  penalty 1.93
     F  GTGGCTCATAACCTGTGATAG
        21 nt  Tm 59.9C  GC 48%  pos 1674-1694  hairpin -2.4
     R  GAGAGGCGATGGTGTATTATG
        21 nt  Tm 60.0C  GC 48%  pos 1967-1987  hairpin -0.7
-       - discriminates kcnh6b_locus by a mismatch 1 nt from the 3' end
+       - discriminates demogeneb_locus by a mismatch 1 nt from the 3' end
     - no product predicted on the avoid-panel
 ```
 
@@ -62,7 +95,7 @@ Every candidate site is judged on three criteria, reported separately: mismatche
 TU, AB, TL and WIK are not isogenic. A primer sitting on a SNP that segregates in your line fails on one allele and looks exactly like a genotype — the worst kind of failure, because it is silent.
 
 ```bash
-danioprime genotype --template kcnh6a_locus.fa --cut-site 1768 \
+danioprime genotype --template demogenea_locus.fa --cut-site 1768 \
                     --variants sanger_zfish.vcf.gz --variant-chrom chr5 \
                     --template-offset 12400000 \
                     --strain TU --heterozygous-only
@@ -128,9 +161,9 @@ The `examples/` directory ships a synthetic dataset built to have the properties
 
 ```bash
 danioprime genotype \
-    --template examples/kcnh6a_locus.fa \
+    --template examples/demogenea_locus.fa \
     --protospacer AAGCCCTGTTATGTGCAACG \
-    --avoid examples/kcnh6b_locus.fa \
+    --avoid examples/demogeneb_locus.fa \
     --preset genotyping-fluorescent \
     --tails fluorescent \
     --protected 60 \
@@ -144,7 +177,7 @@ danioprime genotype \
 A tail is printed in lower case, and in a colour of its own:
 
 ```
-  kcnh6a_locus_gt_p1  327 bp  penalty 1.36
+  demogenea_locus_gt_p1  327 bp  penalty 1.36
     F  tgtaaaacgacggccagtCGCTACCGACTCAAGTAAAG  (+M13F)
        38 nt, 20 anneal  Tm 60.1C  GC 50%  pos 1569-1588  hairpin -2.0
     R  gtttcttCTATCTGTATGCCGCGATG  (+pigtail)
@@ -159,9 +192,9 @@ In the order sheet the `sequence` column is upper case throughout — that is th
 
 ```bash
 danioprime qpcr \
-    --transcript examples/kcnh6a_transcript.fa \
-    --gtf examples/kcnh6a.gtf --transcript-id kcnh6a \
-    --avoid examples/kcnh6b_transcript.fa \
+    --transcript examples/demogenea_transcript.fa \
+    --gtf examples/demogenea.gtf --transcript-id demogenea \
+    --avoid examples/demogeneb_transcript.fa \
     --require-junction-spanning
 ```
 
@@ -169,7 +202,7 @@ danioprime qpcr \
 Genomic-DNA protection:
   pair                gDNA protection  mechanism
   ------------------  ---------------  ----------------------------
-  kcnh6a-201_qpcr_p1  strong           junction-spanning primer (R)
+  demogenea-201_qpcr_p1  strong           junction-spanning primer (R)
 ```
 
 Protection is graded rather than asserted. `strong` means a primer straddles a junction, so it has no contiguous binding site on genomic DNA at all. `moderate` means the amplicon spans an intron large enough that the genomic product fails under qPCR cycling. `weak` means it spans a junction whose intron is too small to protect anything — a 70 bp intron gives no protection. `none` means genomic DNA amplifies identically, and you are relying entirely on your DNase step.
@@ -179,13 +212,13 @@ If a junction-spanning primer is impossible under your constraints, the tool say
 ### dCAPS for a 1 bp indel or point mutation
 
 ```bash
-danioprime dcaps --template examples/kcnh6a_locus.fa \
+danioprime dcaps --template examples/demogenea_locus.fa \
                  --variant 1768 --variant-base C \
                  --min-product-size 150 --max-product-size 450
 ```
 
 ```
-  kcnh6a_locus_dcaps1  RsaI (GT^AC)  1 introduced mismatch(es)  product 320 bp
+  demogenea_locus_dcaps1  RsaI (GT^AC)  1 introduced mismatch(es)  product 320 bp
     dCAPS primer (F)  CCTAAAGCCCTGTTATGTGTA
     template was      CCTAAAGCCCTGTTATGTGCA
     mismatch 2 nt from the 3' end (offsets [1])
@@ -201,8 +234,8 @@ Diagnostic bands are separated from bands common to both alleles, because only t
 
 ```bash
 danioprime insitu \
-    --template examples/kcnh6a_transcript.fa \
-    --avoid examples/kcnh6b_transcript.fa \
+    --template examples/demogenea_transcript.fa \
+    --avoid examples/demogeneb_transcript.fa \
     --scheme riboprobe-dual-t7-sp6
 ```
 
@@ -216,10 +249,10 @@ Two things here that a primer-shaped analysis gets wrong.
 Probe cross-hybridisation (whole-amplicon, not primer 3' ends):
   pair                 cross-hybridises  longest shared block
   -------------------  ----------------  -------------------------
-  kcnh6a-201_probe_p1  YES               496 nt @ 93% (kcnh6b-201)
+  demogenea-201_probe_p1  YES               496 nt @ 93% (demogeneb-201)
 ```
 
-That pair's primers are *perfectly* specific — the reverse primer discriminates `kcnh6b` by a 3'-terminal mismatch and no product is predicted on the panel. The probe made from it would nonetheless stain both genes. A tool that only checked primers would have called it clean, and the published expression pattern would belong to two genes.
+That pair's primers are *perfectly* specific — the reverse primer discriminates `demogeneb` by a 3'-terminal mismatch and no product is predicted on the panel. The probe made from it would nonetheless stain both genes. A tool that only checked primers would have called it clean, and the published expression pattern would belong to two genes.
 
 The thresholds (85% identity over ≥100 nt) are calibrated rather than guessed — see [`docs/algorithm.md`](docs/algorithm.md#in-situ-probes).
 
@@ -227,14 +260,14 @@ The thresholds (85% identity over ≥100 nt) are calibrated rather than guessed 
 
 ```bash
 danioprime check --primers "F=CGCTACCGACTCAAGTAAAG,R=CTATCTGTATGCCGCGATG" \
-                 --avoid examples/kcnh6b_locus.fa
+                 --avoid examples/demogeneb_locus.fa
 ```
 
 ```
 primer  closest match        primes?  verdict
 ------  -------------------  -------  -------------------------------------
 F       none                 no       no detectable binding site on the panel
-R       kcnh6b_locus (0 mm)  YES      primes on kcnh6b_locus (0 mismatches)
+R       demogeneb_locus (0 mm)  YES      primes on demogeneb_locus (0 mismatches)
 ```
 
 ---
@@ -262,10 +295,10 @@ CI verifies the browser build on every push — that the committed wheel matches
 from danioprime import DesignParams, DesignRequest, ParalogPanel, read_single_fasta, run_design
 
 result = run_design(DesignRequest(
-    template=read_single_fasta("kcnh6a_locus.fa"),
+    template=read_single_fasta("demogenea_locus.fa"),
     params=DesignParams().replace(min_product_size=200, max_product_size=600),
-    panel=ParalogPanel.from_fasta("kcnh6b_locus.fa"),
-    name="kcnh6a",
+    panel=ParalogPanel.from_fasta("demogeneb_locus.fa"),
+    name="demogenea",
 ))
 
 for pair in result.pairs:

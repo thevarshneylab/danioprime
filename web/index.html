@@ -131,6 +131,8 @@ h2.sec:first-child { margin-top: 0; }
   .oligo .seq .tail, .oligo .num .tailname { color: var(--tcd); }
 }
 .tailhint { font-size: 12px; color: var(--ink-soft); margin: -4px 0 9px; }
+.snippet { font-family: var(--mono); font-size: 12px; background: var(--panel-2, rgba(127,127,127,.12));
+  padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 6px 0 10px; }
 .card .notes { margin: 8px 0 0; padding-left: 16px; font-size: 12px; color: var(--ink-soft); }
 .card .notes li { margin: 2px 0; }
 .terms { margin-top: 8px; font-size: 11.5px; }
@@ -175,11 +177,11 @@ footer p { margin: 5px 0; max-width: 80ch; }
     <section class="pane" id="pane-genotype" role="tabpanel">
       <p class="mode-note">Primers that bracket an edited site: the amplicon spans the lesion and neither primer touches it.</p>
       <label for="g-template">Locus sequence <span class="hint">— FASTA or raw bases</span></label>
-      <textarea id="g-template" rows="5" placeholder=">kcnh6a_locus&#10;ACGT…"></textarea>
+      <textarea id="g-template" rows="5" placeholder=">demogenea_locus&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="g-file" accept=".fa,.fasta,.fna,.txt,.seq"><button class="link" data-demo="genotype">load example</button></div>
 
       <label for="g-avoid">Avoid-panel <span class="hint">— the ohnolog, a family member, a transgene</span></label>
-      <textarea id="g-avoid" rows="3" placeholder=">kcnh6b_locus&#10;ACGT…"></textarea>
+      <textarea id="g-avoid" rows="3" placeholder=">demogeneb_locus&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="g-avoidfile" accept=".fa,.fasta,.fna,.txt,.seq"></div>
 
       <label for="g-proto">Protospacer <span class="hint">— without the PAM, either strand</span></label>
@@ -207,11 +209,11 @@ footer p { margin: 5px 0; max-width: 80ch; }
     <section class="pane" id="pane-qpcr" role="tabpanel" hidden>
       <p class="mode-note">RT-qPCR across an exon junction, so the assay cannot read genomic DNA — and, with an avoid-panel, cannot measure the ohnolog as well.</p>
       <label for="q-template">Spliced transcript <span class="hint">— cDNA, FASTA or raw</span></label>
-      <textarea id="q-template" rows="5" placeholder=">kcnh6a-201&#10;ACGT…"></textarea>
+      <textarea id="q-template" rows="5" placeholder=">demogenea-201&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="q-file" accept=".fa,.fasta,.txt"><button class="link" data-demo="qpcr">load example</button></div>
 
       <label for="q-avoid">Avoid-panel <span class="hint">— the ohnolog <em>transcript</em></span></label>
-      <textarea id="q-avoid" rows="3" placeholder=">kcnh6b-201&#10;ACGT…"></textarea>
+      <textarea id="q-avoid" rows="3" placeholder=">demogeneb-201&#10;ACGT…"></textarea>
 
       <label for="q-junctions">Exon-junction offsets <span class="hint">— positions in the transcript, comma separated</span></label>
       <input type="text" id="q-junctions" placeholder="210, 540" spellcheck="false">
@@ -220,7 +222,7 @@ footer p { margin: 5px 0; max-width: 80ch; }
         <label for="q-gtf">GTF / GFF3 exon lines</label>
         <textarea id="q-gtf" rows="4" placeholder="chr5&#9;.&#9;exon&#9;1001&#9;1200&#9;.&#9;+&#9;.&#9;transcript_id &quot;x&quot;;"></textarea>
         <label for="q-txid">Transcript or gene to use</label>
-        <input type="text" id="q-txid" placeholder="kcnh6a" spellcheck="false">
+        <input type="text" id="q-txid" placeholder="demogenea" spellcheck="false">
       </details>
 
       <div class="check"><input type="checkbox" id="q-span" checked><label for="q-span" style="margin:0;font-weight:400">Require a junction-spanning primer <span class="hint">(the strongest gDNA protection)</span></label></div>
@@ -251,11 +253,11 @@ footer p { margin: 5px 0; max-width: 80ch; }
     <section class="pane" id="pane-insitu" role="tabpanel" hidden>
       <p class="mode-note">A riboprobe template with an RNA-polymerase promoter. Probe cross-hybridisation is checked across the <em>whole amplicon</em> — a pair whose primers discriminate the ohnolog can still yield a probe that stains both genes.</p>
       <label for="i-template">Transcript or cDNA</label>
-      <textarea id="i-template" rows="5" placeholder="&gt;kcnh6a-201&#10;ACGT…"></textarea>
+      <textarea id="i-template" rows="5" placeholder="&gt;demogenea-201&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="i-file" accept=".fa,.fasta,.txt"><button class="link" data-demo="insitu">load example</button></div>
 
       <label for="i-avoid">Avoid-panel <span class="hint">— the ohnolog transcript; this is where it matters most</span></label>
-      <textarea id="i-avoid" rows="3" placeholder="&gt;kcnh6b-201&#10;ACGT…"></textarea>
+      <textarea id="i-avoid" rows="3" placeholder="&gt;demogeneb-201&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="i-avoidfile" accept=".fa,.fasta,.txt"></div>
 
       <label for="i-scheme">Promoter arrangement</label>
@@ -300,7 +302,7 @@ footer p { margin: 5px 0; max-width: 80ch; }
       <textarea id="c-primers" rows="5" placeholder="F=CGCTACCGACTCAAGTAAAG&#10;R=CTATCTGTATGCCGCGATG"></textarea>
       <div class="filerow"><button class="link" data-demo="check">load example</button></div>
       <label for="c-avoid">Avoid-panel</label>
-      <textarea id="c-avoid" rows="4" placeholder=">kcnh6b_locus&#10;ACGT…"></textarea>
+      <textarea id="c-avoid" rows="4" placeholder=">demogeneb_locus&#10;ACGT…"></textarea>
       <div class="filerow"><input type="file" id="c-avoidfile" accept=".fa,.fasta,.txt"></div>
       <button class="go" data-run="check">Evaluate</button>
     </section>
@@ -328,7 +330,11 @@ footer p { margin: 5px 0; max-width: 80ch; }
         <li><strong>Design</strong> — general-purpose, with target and exclude regions</li>
         <li><strong>Check</strong> — grade primers you already ordered</li>
       </ul>
-      <p>Pick a mode and press <em>load example</em> to see it work on the bundled mock ohnolog pair.</p>
+      <p>Pick a mode and press <em>load example</em> to see it work on a bundled <strong>synthetic</strong> ohnolog pair — built to contain the hard cases, but not real zebrafish sequence, so <code>demogenea</code> is not a gene you can look up.</p>
+      <p><strong>Working on a real gene?</strong> Paste its sequence into the box, or get it with the command-line version, which fetches by name:</p>
+      <pre class="snippet">pip install danioprime
+danioprime fetch myo7aa --flank 2000 --out myo7aa_locus.fa</pre>
+      <p>The browser cannot do that itself: this page runs the real Python package compiled to WebAssembly, which has no network sockets. That is also why nothing you paste here leaves your machine.</p>
     </div>
     <div id="out" hidden></div>
   </div>
@@ -657,7 +663,7 @@ async function loadDemo(mode, btn) {
   btn.textContent = "loading…";
   try {
     if (mode === "genotype" || mode === "design" || mode === "dcaps") {
-      const [a, b] = await Promise.all([fetchExample("kcnh6a_locus.fa"), fetchExample("kcnh6b_locus.fa")]);
+      const [a, b] = await Promise.all([fetchExample("demogenea_locus.fa"), fetchExample("demogeneb_locus.fa")]);
       if (mode === "genotype") {
         $("g-template").value = a; $("g-avoid").value = b;
         $("g-proto").value = "AAGCCCTGTTATGTGCAACG"; $("g-protected").value = 60;
@@ -671,7 +677,7 @@ async function loadDemo(mode, btn) {
           $(`adv-${k}`).value = v;
       }
     } else if (mode === "insitu") {
-      const [a, b] = await Promise.all([fetchExample("kcnh6a_transcript.fa"), fetchExample("kcnh6b_transcript.fa")]);
+      const [a, b] = await Promise.all([fetchExample("demogenea_transcript.fa"), fetchExample("demogeneb_transcript.fa")]);
       $("i-template").value = a; $("i-avoid").value = b;
       $("i-scheme").value = "riboprobe-dual-t7-sp6";
       $("i-scheme").dispatchEvent(new Event("change"));
@@ -679,12 +685,12 @@ async function loadDemo(mode, btn) {
       for (const [k, v] of [["min_product_size", 400], ["opt_product_size", 500], ["max_product_size", 700]])
         $(`adv-${k}`).value = v;
     } else if (mode === "qpcr") {
-      const [a, b] = await Promise.all([fetchExample("kcnh6a_transcript.fa"), fetchExample("kcnh6b_transcript.fa")]);
+      const [a, b] = await Promise.all([fetchExample("demogenea_transcript.fa"), fetchExample("demogeneb_transcript.fa")]);
       $("q-template").value = a; $("q-avoid").value = b; $("q-junctions").value = "210, 540";
       $("q-preset").value = "qpcr";
     } else {
       $("c-primers").value = "R_conserved=CTATCTGTATGCCGCGATG\nF_unique=GTGGCTCATAACCTGTGATAG";
-      $("c-avoid").value = await fetchExample("kcnh6b_locus.fa");
+      $("c-avoid").value = await fetchExample("demogeneb_locus.fa");
     }
   } catch (err) {
     alert(`Could not load the example: ${err.message}\n\nThe example files live beside this page in the repository; paste your own sequence instead.`);

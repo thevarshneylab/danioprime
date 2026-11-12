@@ -4,7 +4,7 @@
 Synthetic, but built to have the properties that make zebrafish design hard, so
 the examples exercise real behaviour rather than a happy path:
 
-* ``kcnh6a`` and ``kcnh6b`` are a mock ohnolog pair. Their coding exons are 94%
+* ``demogenea`` and ``demogeneb`` are a mock ohnolog pair. Their coding exons are 94%
   identical with a block of near-perfect conservation, which is exactly where a
   naive design lands and the reason the pair gets co-amplified.
 * Their 3' UTRs are unrelated, as real ohnolog UTRs largely are: UTR sequence
@@ -13,13 +13,19 @@ the examples exercise real behaviour rather than a happy path:
   and the UTR is the only place a specific probe can be placed.
 * The intergenic and intronic sequence diverges freely, so primers placed there
   discriminate easily. The contrast between the two is the point.
-* A SpCas9 protospacer with a real NGG PAM sits in exon 2 of ``kcnh6a``.
+* A SpCas9 protospacer with a real NGG PAM sits in exon 2 of ``demogenea``.
 * A VCF carries TU- and AB-specific variants, including one sitting in an
   otherwise attractive primer site, and one homozygous in TU (which is *not* a
   hazard and should be recovered by ``--heterozygous-only``).
 
-Nothing here is real zebrafish sequence; the gene names are placeholders chosen
-because the ``a``/``b`` suffix convention is what the ohnolog logic keys on.
+Nothing here is real zebrafish sequence. The names are deliberately not those of
+real genes: a file called ``kcnh6a_locus.fa`` holding invented bases is an
+impersonation, and someone will eventually BLAST it. The ``a``/``b`` suffix is
+kept because it is what the ohnolog logic keys on.
+
+To design against a real gene, fetch it: ``danioprime fetch myo7aa --flank 2000
+--out myo7aa.fa``. This dataset exists so the tests and the browser demo can run
+offline and deterministically, not as a model of what your input looks like.
 """
 
 from __future__ import annotations
@@ -63,13 +69,13 @@ def main() -> None:
     # A 120 bp block of near-perfect conservation inside exon 2: the trap.
     conserved = exon2[100:220]
 
-    # --- kcnh6a locus: exon1 - intron1 - exon2 - intron2 - exon3 ---------
+    # --- demogenea locus: exon1 - intron1 - exon2 - intron2 - exon3 ---------
     a_intron1 = rand_seq(900)
     a_intron2 = rand_seq(1100)
     a_upstream = rand_seq(600)
     a_downstream = rand_seq(600)
 
-    # Plant a SpCas9 protospacer with an NGG PAM inside exon 2 of kcnh6a,
+    # Plant a SpCas9 protospacer with an NGG PAM inside exon 2 of demogenea,
     # outside the conserved block so the genotyping example is not forced to
     # sit on paralogous sequence.
     protospacer = rand_seq(20)
@@ -95,7 +101,7 @@ def main() -> None:
     ]
     a_exon_lens = [len(exon1), len(exon2_a), len(exon3)]
 
-    # --- kcnh6b locus: diverged except for the conserved exon block ------
+    # --- demogeneb locus: diverged except for the conserved exon block ------
     b_exon1 = mutate(exon1, 0.06)
     b_exon2 = mutate(exon2, 0.06)
     # restore the conserved block almost exactly (2 substitutions over 120 bp)
@@ -107,12 +113,12 @@ def main() -> None:
     )
 
     write_fasta(
-        HERE / "kcnh6a_locus.fa",
-        [("kcnh6a_locus", "mock chr5 locus, 3 exons, SpCas9 protospacer in exon 2", a_locus)],
+        HERE / "demogenea_locus.fa",
+        [("demogenea_locus", "SYNTHETIC demo locus -- not real zebrafish sequence. 3 exons, SpCas9 protospacer in exon 2", a_locus)],
     )
     write_fasta(
-        HERE / "kcnh6b_locus.fa",
-        [("kcnh6b_locus", "mock ohnolog of kcnh6a: 94% identical exons", b_locus)],
+        HERE / "demogeneb_locus.fa",
+        [("demogeneb_locus", "SYNTHETIC ohnolog of demogenea -- not real sequence. Coding exons 94% identical", b_locus)],
     )
 
     # --- spliced transcripts --------------------------------------------
@@ -120,31 +126,31 @@ def main() -> None:
     b_tx = b_exon1 + b_exon2 + b_exon3
     cds_end = len(exon1) + len(exon2_a) + len(exon3_cds)
     write_fasta(
-        HERE / "kcnh6a_transcript.fa",
+        HERE / "demogenea_transcript.fa",
         [(
-            "kcnh6a-201",
+            "demogenea-201",
             f"spliced transcript, junctions at {len(exon1)} and {len(exon1) + len(exon2_a)}, "
             f"3' UTR from {cds_end + 1}",
             a_tx,
         )],
     )
     write_fasta(
-        HERE / "kcnh6b_transcript.fa",
-        [("kcnh6b-201", "ohnolog transcript: avoid-panel for qPCR and in situ", b_tx)],
+        HERE / "demogeneb_transcript.fa",
+        [("demogeneb-201", "ohnolog transcript: avoid-panel for qPCR and in situ", b_tx)],
     )
 
-    # --- GTF for the kcnh6a locus (coordinates within the locus FASTA) ---
-    with (HERE / "kcnh6a.gtf").open("w", newline="\n") as fh:
+    # --- GTF for the demogenea locus (coordinates within the locus FASTA) ---
+    with (HERE / "demogenea.gtf").open("w", newline="\n") as fh:
         fh.write("#!genome-build mock-GRCz12tu-like\n")
-        fh.write("# coordinates are within kcnh6a_locus.fa, not a real genome\n")
+        fh.write("# coordinates are within demogenea_locus.fa, not a real genome\n")
         for i, (start, length) in enumerate(zip(a_exon_starts, a_exon_lens, strict=True), 1):
             attrs = (
-                'gene_id "ENSDARGMOCK001"; transcript_id "kcnh6a-201"; '
-                f'gene_name "kcnh6a"; exon_number "{i}"; '
+                'gene_id "ENSDARGMOCK001"; transcript_id "demogenea-201"; '
+                f'gene_name "demogenea"; exon_number "{i}"; '
                 'transcript_biotype "protein_coding";'
             )
             fh.write(
-                f"kcnh6a_locus\tmock\texon\t{start + 1}\t{start + length}\t.\t+\t.\t{attrs}\n"
+                f"demogenea_locus\tmock\texon\t{start + 1}\t{start + length}\t.\t+\t.\t{attrs}\n"
             )
 
     # --- strain variants -------------------------------------------------
@@ -155,7 +161,7 @@ def main() -> None:
     with (HERE / "strain_variants.vcf").open("w", newline="\n") as fh:
         fh.write("##fileformat=VCFv4.2\n")
         fh.write("##source=danioprime example data (synthetic)\n")
-        fh.write(f"##contig=<ID=kcnh6a_locus,length={len(a_locus)}>\n")
+        fh.write(f"##contig=<ID=demogenea_locus,length={len(a_locus)}>\n")
         fh.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
         fh.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tTU\tAB\n")
         genotypes = [("0/1", "0/0"), ("0/1", "0/1"), ("1/1", "0/0"), ("0/0", "0/1"), ("0/1", "0/0")]
@@ -163,7 +169,7 @@ def main() -> None:
             ref = a_locus[pos]
             alt = RNG.choice([b for b in "ACGT" if b != ref])
             fh.write(
-                f"kcnh6a_locus\t{pos + 1}\tex_snp{i}\t{ref}\t{alt}\t60\tPASS\t.\tGT\t{tu}\t{ab}\n"
+                f"demogenea_locus\t{pos + 1}\tex_snp{i}\t{ref}\t{alt}\t60\tPASS\t.\tGT\t{tu}\t{ab}\n"
             )
 
     # --- a knock-in cassette --------------------------------------------
@@ -172,7 +178,7 @@ def main() -> None:
         + rand_seq(680)
         + "TTACTTGTACAGCTCGTCCATGCC"  # mock reporter end
     )
-    write_fasta(HERE / "reporter_cassette.fa", [("mScarlet_cassette", "mock knock-in cassette", cassette)])
+    write_fasta(HERE / "reporter_cassette.fa", [("mScarlet_cassette", "SYNTHETIC knock-in cassette -- not a real mScarlet sequence", cassette)])
 
     # --- summary ---------------------------------------------------------
     summary = HERE / "DATA.md"
@@ -180,26 +186,40 @@ def main() -> None:
         newline="\n",
         data=f"""# Example dataset (synthetic)
 
+**None of this is real zebrafish sequence.** The names are deliberately not
+those of real genes: a file called `kcnh6a_locus.fa` holding invented bases is
+an impersonation, and someone will eventually BLAST it. The `a`/`b` suffix is
+kept because it is what the ohnolog logic keys on.
+
+This dataset exists so the tests, `demo.sh` and the browser demo run offline and
+deterministically, and it is built to contain the cases that are hard rather
+than a happy path. To design against a real gene, fetch one:
+
+```bash
+danioprime fetch myo7aa --flank 2000 --out myo7aa_locus.fa
+bash myo7aa.sh          # the whole workflow, on the real locus
+```
+
 Regenerate with `python make_example_data.py`. Deterministic: seed 20260211.
 
 | file | contents |
 |---|---|
-| `kcnh6a_locus.fa` | {len(a_locus)} bp mock locus, 3 exons, SpCas9 protospacer in exon 2 |
-| `kcnh6b_locus.fa` | {len(b_locus)} bp mock ohnolog, exons ~94% identical to kcnh6a |
-| `kcnh6a_transcript.fa` | {len(a_tx)} bp spliced transcript |
-| `kcnh6b_transcript.fa` | {len(b_tx)} bp ohnolog transcript (avoid-panel for qPCR) |
-| `kcnh6a.gtf` | exon structure in `kcnh6a_locus.fa` coordinates |
+| `demogenea_locus.fa` | {len(a_locus)} bp synthetic locus, 3 exons, SpCas9 protospacer in exon 2 |
+| `demogeneb_locus.fa` | {len(b_locus)} bp synthetic ohnolog, exons ~94% identical to demogenea |
+| `demogenea_transcript.fa` | {len(a_tx)} bp spliced transcript |
+| `demogeneb_transcript.fa` | {len(b_tx)} bp ohnolog transcript (avoid-panel for qPCR) |
+| `demogenea.gtf` | exon structure in `demogenea_locus.fa` coordinates |
 | `strain_variants.vcf` | 5 variants with TU/AB genotypes |
-| `reporter_cassette.fa` | {len(cassette)} bp mock knock-in cassette |
+| `reporter_cassette.fa` | {len(cassette)} bp synthetic knock-in cassette |
 
-Key coordinates in `kcnh6a_locus.fa` (1-based):
+Key coordinates in `demogenea_locus.fa` (1-based):
 
 - exon 1: {a_exon_starts[0] + 1}-{a_exon_starts[0] + a_exon_lens[0]}
 - exon 2: {a_exon_starts[1] + 1}-{a_exon_starts[1] + a_exon_lens[1]}
 - exon 3: {a_exon_starts[2] + 1}-{a_exon_starts[2] + a_exon_lens[2]}
 - protospacer: {a_exon_starts[1] + 41}-{a_exon_starts[1] + 60} (PAM {a_exon_starts[1] + 61}-{a_exon_starts[1] + 63})
 - SpCas9 cut site: {cut + 1}
-- conserved block shared with kcnh6b: transcript {len(exon1) + 101}-{len(exon1) + 220}
+- conserved block shared with demogeneb: transcript {len(exon1) + 101}-{len(exon1) + 220}
 
 Transcript junctions: {len(exon1)} and {len(exon1) + len(exon2_a)}.
 
@@ -215,7 +235,7 @@ chosen because the ZFIN suffix convention is what the ohnolog logic keys on.
 
     print(f"protospacer: {protospacer}")
     print(f"cut site (1-based): {cut + 1}")
-    print(f"locus lengths: kcnh6a {len(a_locus)}, kcnh6b {len(b_locus)}")
+    print(f"locus lengths: demogenea {len(a_locus)}, demogeneb {len(b_locus)}")
     print(f"transcript junctions: {len(exon1)}, {len(exon1) + len(exon2_a)}")
     print(f"conserved block in transcript: {len(exon1) + 101}-{len(exon1) + 220}")
     print(f"CDS ends at transcript {cds_end}; divergent 3' UTR {cds_end + 1}-{len(a_tx)}")

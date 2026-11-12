@@ -1,10 +1,10 @@
 ##fileformat=VCFv4.2
 ##source=danioprime example data (synthetic)
-##contig=<ID=kcnh6a_locus,length=4320>
+##contig=<ID=demogenea_locus,length=4320>
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	TU	AB
-kcnh6a_locus	1588	ex_snp1	G	C	60	PASS	.	GT	0/1	0/0
-kcnh6a_locus	1648	ex_snp2	T	A	60	PASS	.	GT	0/1	0/1
-kcnh6a_locus	1918	ex_snp3	T	G	60	PASS	.	GT	1/1	0/0
-kcnh6a_locus	2008	ex_snp4	G	T	60	PASS	.	GT	0/0	0/1
-kcnh6a_locus	2368	ex_snp5	A	T	60	PASS	.	GT	0/1	0/0
+demogenea_locus	1588	ex_snp1	G	C	60	PASS	.	GT	0/1	0/0
+demogenea_locus	1648	ex_snp2	T	A	60	PASS	.	GT	0/1	0/1
+demogenea_locus	1918	ex_snp3	T	G	60	PASS	.	GT	1/1	0/0
+demogenea_locus	2008	ex_snp4	G	T	60	PASS	.	GT	0/0	0/1
+demogenea_locus	2368	ex_snp5	A	T	60	PASS	.	GT	0/1	0/0

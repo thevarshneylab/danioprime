@@ -198,7 +198,7 @@ class TestQpcrMode:
         for i, (start, exon) in enumerate(zip([0, 1000, 3000], (e1, e2, e3), strict=True), 1):
             gtf.append(
                 f'chr1\tx\texon\t{start + 1}\t{start + len(exon)}\t.\t+\t.\t'
-                f'gene_id "G"; transcript_id "tx"; gene_name "kcnh6a"; exon_number "{i}";'
+                f'gene_id "G"; transcript_id "tx"; gene_name "demogenea"; exon_number "{i}";'
             )
         return ">tx\n" + e1 + e2 + e3, "\n".join(gtf)
 
@@ -210,7 +210,7 @@ class TestQpcrMode:
 
     def test_junctions_from_gtf(self, transcript):
         text, gtf = transcript
-        r = run({"mode": "qpcr", "template": text, "gtf": gtf, "transcript_id": "kcnh6a"})
+        r = run({"mode": "qpcr", "template": text, "gtf": gtf, "transcript_id": "demogenea"})
         assert r["ok"]
         assert r["extra"]["junction_offsets"] == [210, 540]
 
@@ -309,7 +309,7 @@ class TestInSituMode:
         left, mid, right = make_seq(700, 11), make_seq(900, 22), make_seq(700, 33)
         target = left + mid + right
         paralog = mutate(left, 0.35, 1) + mutate(mid, 0.04, 2) + mutate(right, 0.35, 3)
-        return ">kcnh6a\n" + target, ">kcnh6b\n" + paralog
+        return ">demogenea\n" + target, ">demogeneb\n" + paralog
 
     def _payload(self, transcripts, **kw):
         a, b = transcripts
