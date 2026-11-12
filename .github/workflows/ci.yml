@@ -69,9 +69,14 @@ jobs:
           danioprime presets
           danioprime genotype \
             --template examples/demogenea_locus.fa \
-            --protospacer AAGCCCTGTTATGTGCAACG \
+            --target 1711-2040 \
             --avoid examples/demogeneb_locus.fa \
             --preset genotyping-gel --show 2
+          # The one real locus: 1 kb of Danio rerio chr18, danRer11.
+          danioprime genotype \
+            --template examples/myo7aa_locus.fa \
+            --target 591-767 \
+            --preset genotyping-gel --tails fluorescent --show 1
 
   web-build:
     name: browser build (wheel freshness + Pyodide)
